@@ -2,7 +2,7 @@
 # ITechBR - Automated Windows Maintenance
 # Author: Ernesto Nurnberg / ITechBR
 # Purpose: Maintain, repair, and update Windows with minimal technician interaction
-# Version: 1.0.0
+# Version: 1.1.0
 # ========================================
 
 [CmdletBinding()]
@@ -260,7 +260,7 @@ function Register-ChkdskLogCollector {
         [string]$TargetLogPath
     )
 
-    $collectorPath = Join-Path $LogDir "ITech-ChkdskCollector.ps1"
+    $collectorPath = Join-Path $env:TEMP "ITech-ChkdskCollector.ps1"
     $collectorScript = @'
 param(
     [Parameter(Mandatory = $true)]
