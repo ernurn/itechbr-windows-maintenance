@@ -2,7 +2,7 @@
 # ITechBR - Automated Windows Maintenance
 # Author: Ernesto Nurnberg / ITechBR
 # Purpose: Maintain, repair, and update Windows with minimal technician interaction
-# Version: 1.1.0
+# Version: 1.1.1
 # ========================================
 
 [CmdletBinding()]
@@ -23,9 +23,10 @@ if (-not (Test-Path -LiteralPath $LogDir)) {
 $Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
 $LogPath = Join-Path $LogDir "itechbr-$Timestamp.log"
 $Results = New-Object System.Collections.Generic.List[object]
-$RestartRequired = $false
-$ChkdskScheduled = $false
-$PowerConfigChanged = $false
+$script:RestartRequired = $false
+$script:ChkdskScheduled = $false
+$script:PowerRestored = $false
+$script:PowerConfigChanged = $false
 
 function Write-Log {
     param(
@@ -71,7 +72,7 @@ function Join-CommandArguments {
 
     $escaped = foreach ($argument in $Arguments) {
         if ($argument -match '[\s"]') {
-            '"' + ($argument -replace '"', '\"') + '"'
+            '"' + ($argument -replace '"', '""') + '"'
         }
         else {
             $argument
@@ -331,9 +332,23 @@ function Set-FastStartup {
     Set-ItemProperty -Path $powerKey -Name HiberbootEnabled -Value $value -Force
 }
 
-function Enable-HibernationAndFastStartup {
-    Invoke-NativeCommand -FilePath "powercfg.exe" -Arguments @("/h", "on") | Out-Null
-    Set-FastStartup -Enabled $true
+function Restore-OriginalPowerSettings {
+    param(
+        [Parameter(Mandatory = $true)]
+        [bool]$InitialHibernationEnabled,
+
+        [Parameter(Mandatory = $true)]
+        [int]$InitialFastStartupValue = 1
+    )
+
+    if ($InitialHibernationEnabled) {
+        Invoke-NativeCommand -FilePath "powercfg.exe" -Arguments @("/h", "on") | Out-Null
+    }
+    else {
+        Invoke-NativeCommand -FilePath "powercfg.exe" -Arguments @("/h", "off") | Out-Null
+    }
+
+    Set-FastStartup -Enabled ([bool]$InitialFastStartupValue)
 }
 
 function Install-WindowsUpdates {
@@ -403,9 +418,9 @@ trap {
     try {
         Write-Log "FATAL: $($_.Exception.Message)" "ERROR"
 
-        if ($PowerConfigChanged) {
+        if ($script:PowerConfigChanged) {
             Write-Log "Attempting to restore hibernation and Fast Startup after fatal error" "WARN"
-            Enable-HibernationAndFastStartup
+            Restore-OriginalPowerSettings -InitialHibernationEnabled $InitialHibernationEnabled -InitialFastStartupValue $InitialFastStartupValue
             $script:PowerConfigChanged = $false
             Write-Log "Power configuration restored after fatal error" "OK"
         }
@@ -463,13 +478,15 @@ if ($SelfTest) {
 
 if (-not (Test-IsAdministrator)) {
     $argsList = @("-NoProfile", "-ExecutionPolicy", "Bypass", "-File", "`"$PSCommandPath`"")
+
     if ($NoRestart) { $argsList += "-NoRestart" }
     if ($SkipWindowsUpdate) { $argsList += "-SkipWindowsUpdate" }
     if ($SkipChkdsk) { $argsList += "-SkipChkdsk" }
     if ($SelfTest) { $argsList += "-SelfTest" }
 
     Start-Process -FilePath "powershell.exe" -ArgumentList $argsList -Verb RunAs
-    exit
+
+    return
 }
 
 Write-Log "===== ITECHBR MAINTENANCE STARTED ====="
@@ -480,6 +497,10 @@ Write-Log "Log: $LogPath"
 
 $InitialHibernationEnabled = Get-HibernationState
 $InitialFastStartupValue = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Name HiberbootEnabled -ErrorAction SilentlyContinue).HiberbootEnabled
+
+if ($null -eq $InitialFastStartupValue) {
+    $InitialFastStartupValue = 1
+}
 Write-Log "Initial power state: Hibernation=$InitialHibernationEnabled, FastStartup=$InitialFastStartupValue"
 
 Invoke-Step "Temporarily disable power settings for maintenance" {
@@ -489,25 +510,48 @@ Invoke-Step "Temporarily disable power settings for maintenance" {
     "Hibernation and Fast Startup temporarily disabled"
 } -ContinueOnError
 
-Invoke-Step "Clean temporary files" {
+Invoke-Step "Configure and run Windows Disk Cleanup" {
+    $base = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches"
+
+    Get-ChildItem $base | ForEach-Object {
+        try {
+            New-ItemProperty -Path $_.PSPath -Name "StateFlags0001" -Value 2 -PropertyType DWord -Force | Out-Null
+        }
+        catch {}
+    }
+
+    Invoke-NativeCommand -FilePath "cleanmgr.exe" -Arguments @("/sagerun:1") -TimeoutMinutes 60 -HeartbeatSeconds 120 | Out-Null
+
+    "CleanMgr automated cleanup completed"
+} -ContinueOnError
+
+Invoke-Step "Clean residual temporary files" {
     $paths = @(
         "C:\Windows\Temp\*",
         "$env:TEMP\*",
-        "$env:WINDIR\Prefetch\*"
+        "C:\Windows\SoftwareDistribution\DeliveryOptimization\*"
     )
 
     foreach ($path in $paths) {
-        Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+        if (Test-Path $path) {
+            Remove-Item -Path $path -Recurse -Force -ErrorAction SilentlyContinue
+        }
     }
 
-    Clear-RecycleBin -Force -ErrorAction SilentlyContinue
-    "Temporary files, Prefetch, and recycle bin processed"
+    try {
+        Clear-RecycleBin -Force -Confirm:$false -ErrorAction Stop
+    }
+    catch {
+        Write-Log "Recycle Bin cleanup skipped: $($_.Exception.Message)" "WARN"
+    }
+
+    "Residual temporary files and recycle bin processed"
 } -ContinueOnError
 
 Invoke-Step "Clean Windows Update cache" {
     $services = @("bits", "wuauserv", "cryptsvc")
     foreach ($service in $services) {
-        Stop-Service -Name $service -Force -ErrorAction SilentlyContinue
+        Get-Service -Name $service -ErrorAction SilentlyContinue | Where-Object {$_.Status -eq 'Running'} | Stop-Service -Force
     }
 
     Remove-Item -Path "C:\Windows\SoftwareDistribution\Download\*" -Recurse -Force -ErrorAction SilentlyContinue
@@ -583,10 +627,12 @@ else {
     Add-Result -Task "Schedule deep CHKDSK for next boot" -Status "SKIPPED" -Detail "-SkipChkdsk parameter"
 }
 
-Invoke-Step "Restore hibernation and Fast Startup" {
-    Enable-HibernationAndFastStartup
+
+Invoke-Step "Restore original power settings" {
+    Restore-OriginalPowerSettings -InitialHibernationEnabled $InitialHibernationEnabled -InitialFastStartupValue $InitialFastStartupValue
     $script:PowerConfigChanged = $false
-    "Hibernation and Fast Startup enabled again"
+    $script:PowerRestored = $true
+    "Original power configuration restored"
 } -ContinueOnError
 
 Invoke-Step "Generate final summary" {
@@ -594,9 +640,10 @@ Invoke-Step "Generate final summary" {
     foreach ($result in $Results) {
         Write-Log "$($result.Status) | $($result.Task) | $($result.Detail)"
     }
-    Write-Log "Restart required: $RestartRequired"
-    Write-Log "CHKDSK scheduled: $ChkdskScheduled"
-    Write-Log "Power configuration restored: $(-not $PowerConfigChanged)"
+    Write-Log "Restart required: $($script:RestartRequired)"
+    Write-Log "CHKDSK scheduled: $($script:ChkdskScheduled)"
+    $powerState = -not $script:PowerConfigChanged
+    Write-Log "Power configuration restored: $($script:PowerRestored)"
     "Summary written to $LogPath"
 }
 
@@ -605,11 +652,11 @@ Write-Host ""
 Write-Host "ITechBR maintenance finished." -ForegroundColor Green
 Write-Host "Log generated: $LogPath" -ForegroundColor Cyan
 
-if ($RestartRequired -and -not $NoRestart) {
+if ($script:RestartRequired -and -not $NoRestart) {
     Write-Log "Automatic restart in 60 seconds. Use shutdown /a to cancel if needed." "WARN"
     shutdown.exe /r /t 60 /c "ITechBR: maintenance finished. Automatic restart to complete Windows Update/CHKDSK."
 }
-elseif ($RestartRequired -and $NoRestart) {
+elseif ($script:RestartRequired -and $NoRestart) {
     Write-Log "Restart required, but skipped by -NoRestart parameter" "WARN"
     Write-Host "Restart required, but skipped by -NoRestart." -ForegroundColor Yellow
 }
