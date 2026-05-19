@@ -1,0 +1,520 @@
+﻿2026-05-18 17:22:19 [INFO] ===== ITECHBR MAINTENANCE STARTED =====
+2026-05-18 17:22:19 [INFO] Computer: TESTER-D0AD0
+2026-05-18 17:22:19 [INFO] User: ITechBR
+2026-05-18 17:22:19 [INFO] Operating system: Microsoft Windows 11 Pro 10.0.26200
+2026-05-18 17:22:19 [INFO] Log: C:\Logs\itechbr-20260518_172219.log
+2026-05-18 17:22:19 [INFO] Initial power state: Hibernation=False, FastStartup=1
+2026-05-18 17:22:19 [INFO] START: Temporarily disable power settings for maintenance
+2026-05-18 17:22:20 [OK] OK: Temporarily disable power settings for maintenance - Hibernation and Fast Startup temporarily disabled
+2026-05-18 17:22:20 [INFO] START: Configure and run Windows Disk Cleanup
+2026-05-18 17:22:47 [OK] OK: Configure and run Windows Disk Cleanup - CleanMgr automated cleanup completed
+2026-05-18 17:22:47 [INFO] START: Clean residual temporary files
+2026-05-18 17:22:47 [WARN] Recycle Bin cleanup skipped: O sistema não pode encontrar o arquivo especificado
+2026-05-18 17:22:47 [OK] OK: Clean residual temporary files - Residual temporary files and recycle bin processed
+2026-05-18 17:22:47 [INFO] START: Clean Windows Update cache
+2026-05-18 17:22:53 [OK] OK: Clean Windows Update cache - Download cache and catalog cache processed
+2026-05-18 17:22:53 [INFO] START: Search, download, and install Windows updates
+2026-05-18 17:23:00 [INFO] Updates found (1):
+2026-05-18 17:23:00 [INFO]  - Atualização de inteligência de segurança para Microsoft Defender Antivirus - KB2267602 (versão 1.449.682.0) - Canal atual (amplo)
+2026-05-18 17:23:01 [INFO] Windows Update download result: ResultCode=2
+2026-05-18 17:23:07 [INFO] Windows Update installation result: ResultCode=2, RebootRequired=False
+2026-05-18 17:23:07 [INFO] Update [2] Atualização de inteligência de segurança para Microsoft Defender Antivirus - KB2267602 (versão 1.449.682.0) - Canal atual (amplo)
+2026-05-18 17:23:07 [OK] OK: Search, download, and install Windows updates - Installed/processed: 1. Restart required: False
+2026-05-18 17:23:07 [INFO] START: Repair Windows image with DISM RestoreHealth
+2026-05-18 17:24:47 [INFO] dism.exe output:
+Ferramenta de Gerenciamento e Manutenção de Imagens de Implantação
+Versão: 10.0.26100.5074
+
+Versão da Imagem: 10.0.26200.8457
+
+
+[==                         3.8%                           ] 
+
+[==                         4.6%                           ] 
+
+[===                        5.6%                           ] 
+
+[===                        6.6%                           ] 
+
+[====                       7.5%                           ] 
+
+[====                       8.5%                           ] 
+
+[=====                      9.5%                           ] 
+
+[======                     10.5%                          ] 
+
+[======                     11.5%                          ] 
+
+[=======                    12.5%                          ] 
+
+[=======                    13.4%                          ] 
+
+[========                   14.4%                          ] 
+
+[========                   15.4%                          ] 
+
+[=========                  16.4%                          ] 
+
+[==========                 17.4%                          ] 
+
+[==========                 18.2%                          ] 
+
+[==========                 18.9%                          ] 
+
+[===========                19.4%                          ] 
+
+[===========                20.4%                          ] 
+
+[============               21.4%                          ] 
+
+[============               22.3%                          ] 
+
+[=============              23.3%                          ] 
+
+[==============             24.3%                          ] 
+
+[==============             25.3%                          ] 
+
+[===============            26.3%                          ] 
+
+[===============            26.9%                          ] 
+
+[===============            27.2%                          ] 
+
+[================           28.2%                          ] 
+
+[================           29.0%                          ] 
+
+[=================          29.7%                          ] 
+
+[=================          30.6%                          ] 
+
+[==================         31.6%                          ] 
+
+[==================         32.6%                          ] 
+
+[===================        33.6%                          ] 
+
+[===================        34.2%                          ] 
+
+[====================       35.0%                          ] 
+
+[====================       35.8%                          ] 
+
+[=====================      36.5%                          ] 
+
+[=====================      36.7%                          ] 
+
+[=====================      37.7%                          ] 
+
+[======================     38.3%                          ] 
+
+[======================     39.2%                          ] 
+
+[=======================    39.8%                          ] 
+
+[=======================    40.8%                          ] 
+
+[=======================    41.1%                          ] 
+
+[========================   41.4%                          ] 
+
+[========================   41.7%                          ] 
+
+[========================   42.6%                          ] 
+
+[=========================  43.6%                          ] 
+
+[=========================  44.6%                          ] 
+
+[========================== 45.6%                          ] 
+
+[===========================46.6%                          ] 
+
+[===========================47.5%                          ] 
+
+[===========================48.5%                          ] 
+
+[===========================49.5%                          ] 
+
+[===========================50.5%                          ] 
+
+[===========================51.5%                          ] 
+
+[===========================52.5%                          ] 
+
+[===========================53.4%                          ] 
+
+[===========================53.6%                          ] 
+
+[===========================53.7%                          ] 
+
+[===========================53.7%                          ] 
+
+[===========================53.8%                          ] 
+
+[===========================54.0%                          ] 
+
+[===========================54.0%                          ] 
+
+[===========================54.1%                          ] 
+
+[===========================54.2%                          ] 
+
+[===========================54.3%                          ] 
+
+[===========================54.3%                          ] 
+
+[===========================54.3%                          ] 
+
+[===========================54.3%                          ] 
+
+[===========================54.4%                          ] 
+
+[===========================54.5%                          ] 
+
+[===========================54.6%                          ] 
+
+[===========================54.6%                          ] 
+
+[===========================54.6%                          ] 
+
+[===========================54.7%                          ] 
+
+[===========================54.7%                          ] 
+
+[===========================54.8%                          ] 
+
+[===========================54.8%                          ] 
+
+[===========================54.9%                          ] 
+
+[===========================55.0%                          ] 
+
+[===========================55.0%                          ] 
+
+[===========================55.1%                          ] 
+
+[===========================55.2%                          ] 
+
+[===========================55.2%                          ] 
+
+[===========================55.3%                          ] 
+
+[===========================55.4%                          ] 
+
+[===========================55.5%                          ] 
+
+[===========================55.6%                          ] 
+
+[===========================55.8%                          ] 
+
+[===========================56.5%                          ] 
+
+[===========================57.5%=                         ] 
+
+[===========================58.5%=                         ] 
+
+[===========================59.0%==                        ] 
+
+[===========================60.0%==                        ] 
+
+[===========================62.3%====                      ] 
+
+[===========================77.4%============              ] 
+
+[===========================84.9%=================         ] 
+
+[==========================100.0%==========================] 
+Operação de restauração concluída com êxito.
+A operação foi concluída com êxito.
+2026-05-18 17:24:47 [OK] OK: Repair Windows image with DISM RestoreHealth - DISM RestoreHealth completed
+2026-05-18 17:24:47 [INFO] START: Clean Windows components with DISM StartComponentCleanup
+2026-05-18 17:24:47 [INFO] dism.exe output:
+Ferramenta de Gerenciamento e Manutenção de Imagens de Implantação
+Versão: 10.0.26100.5074
+
+Versão da Imagem: 10.0.26200.8457
+
+
+[===========================65.0%=====                     ] 
+
+[===========================70.0%========                  ] 
+
+[===========================70.0%========                  ] 
+A operação foi concluída com êxito.
+2026-05-18 17:24:47 [OK] OK: Clean Windows components with DISM StartComponentCleanup - DISM StartComponentCleanup completed
+2026-05-18 17:24:47 [INFO] START: Verify system files with SFC
+2026-05-18 17:26:04 [INFO] sfc.exe output:
+Iniciando verificação de arquivos. O processo levará alguns minutos para ser concluído.
+
+
+
+Iniciando fase de verificação de verificação do sistema.
+
+
+Verificação 0% concluída.
+Verificação 0% concluída.
+Verificação 1% concluída.
+Verificação 1% concluída.
+Verificação 2% concluída.
+Verificação 2% concluída.
+Verificação 3% concluída.
+Verificação 3% concluída.
+Verificação 4% concluída.
+Verificação 4% concluída.
+Verificação 5% concluída.
+Verificação 5% concluída.
+Verificação 5% concluída.
+Verificação 6% concluída.
+Verificação 6% concluída.
+Verificação 7% concluída.
+Verificação 7% concluída.
+Verificação 8% concluída.
+Verificação 8% concluída.
+Verificação 9% concluída.
+Verificação 9% concluída.
+Verificação 10% concluída.
+Verificação 10% concluída.
+Verificação 10% concluída.
+Verificação 11% concluída.
+Verificação 11% concluída.
+Verificação 12% concluída.
+Verificação 12% concluída.
+Verificação 13% concluída.
+Verificação 13% concluída.
+Verificação 14% concluída.
+Verificação 14% concluída.
+Verificação 15% concluída.
+Verificação 15% concluída.
+Verificação 15% concluída.
+Verificação 16% concluída.
+Verificação 16% concluída.
+Verificação 17% concluída.
+Verificação 17% concluída.
+Verificação 18% concluída.
+Verificação 18% concluída.
+Verificação 19% concluída.
+Verificação 19% concluída.
+Verificação 20% concluída.
+Verificação 20% concluída.
+Verificação 21% concluída.
+Verificação 21% concluída.
+Verificação 21% concluída.
+Verificação 22% concluída.
+Verificação 22% concluída.
+Verificação 23% concluída.
+Verificação 23% concluída.
+Verificação 24% concluída.
+Verificação 24% concluída.
+Verificação 25% concluída.
+Verificação 25% concluída.
+Verificação 26% concluída.
+Verificação 26% concluída.
+Verificação 26% concluída.
+Verificação 27% concluída.
+Verificação 27% concluída.
+Verificação 28% concluída.
+Verificação 28% concluída.
+Verificação 29% concluída.
+Verificação 29% concluída.
+Verificação 30% concluída.
+Verificação 30% concluída.
+Verificação 31% concluída.
+Verificação 31% concluída.
+Verificação 31% concluída.
+Verificação 32% concluída.
+Verificação 32% concluída.
+Verificação 33% concluída.
+Verificação 33% concluída.
+Verificação 34% concluída.
+Verificação 34% concluída.
+Verificação 35% concluída.
+Verificação 35% concluída.
+Verificação 36% concluída.
+Verificação 36% concluída.
+Verificação 37% concluída.
+Verificação 37% concluída.
+Verificação 37% concluída.
+Verificação 38% concluída.
+Verificação 38% concluída.
+Verificação 39% concluída.
+Verificação 39% concluída.
+Verificação 40% concluída.
+Verificação 40% concluída.
+Verificação 41% concluída.
+Verificação 41% concluída.
+Verificação 42% concluída.
+Verificação 42% concluída.
+Verificação 42% concluída.
+Verificação 43% concluída.
+Verificação 43% concluída.
+Verificação 44% concluída.
+Verificação 44% concluída.
+Verificação 45% concluída.
+Verificação 45% concluída.
+Verificação 46% concluída.
+Verificação 46% concluída.
+Verificação 47% concluída.
+Verificação 47% concluída.
+Verificação 47% concluída.
+Verificação 48% concluída.
+Verificação 48% concluída.
+Verificação 49% concluída.
+Verificação 49% concluída.
+Verificação 50% concluída.
+Verificação 50% concluída.
+Verificação 51% concluída.
+Verificação 51% concluída.
+Verificação 52% concluída.
+Verificação 52% concluída.
+Verificação 52% concluída.
+Verificação 53% concluída.
+Verificação 53% concluída.
+Verificação 54% concluída.
+Verificação 54% concluída.
+Verificação 55% concluída.
+Verificação 55% concluída.
+Verificação 56% concluída.
+Verificação 56% concluída.
+Verificação 57% concluída.
+Verificação 57% concluída.
+Verificação 58% concluída.
+Verificação 58% concluída.
+Verificação 58% concluída.
+Verificação 59% concluída.
+Verificação 59% concluída.
+Verificação 60% concluída.
+Verificação 60% concluída.
+Verificação 61% concluída.
+Verificação 61% concluída.
+Verificação 62% concluída.
+Verificação 62% concluída.
+Verificação 63% concluída.
+Verificação 63% concluída.
+Verificação 63% concluída.
+Verificação 64% concluída.
+Verificação 64% concluída.
+Verificação 65% concluída.
+Verificação 65% concluída.
+Verificação 66% concluída.
+Verificação 66% concluída.
+Verificação 67% concluída.
+Verificação 67% concluída.
+Verificação 68% concluída.
+Verificação 68% concluída.
+Verificação 68% concluída.
+Verificação 69% concluída.
+Verificação 69% concluída.
+Verificação 70% concluída.
+Verificação 70% concluída.
+Verificação 71% concluída.
+Verificação 71% concluída.
+Verificação 72% concluída.
+Verificação 72% concluída.
+Verificação 73% concluída.
+Verificação 73% concluída.
+Verificação 74% concluída.
+Verificação 74% concluída.
+Verificação 74% concluída.
+Verificação 75% concluída.
+Verificação 75% concluída.
+Verificação 76% concluída.
+Verificação 76% concluída.
+Verificação 77% concluída.
+Verificação 77% concluída.
+Verificação 78% concluída.
+Verificação 78% concluída.
+Verificação 79% concluída.
+Verificação 79% concluída.
+Verificação 79% concluída.
+Verificação 80% concluída.
+Verificação 80% concluída.
+Verificação 81% concluída.
+Verificação 81% concluída.
+Verificação 82% concluída.
+Verificação 82% concluída.
+Verificação 83% concluída.
+Verificação 83% concluída.
+Verificação 84% concluída.
+Verificação 84% concluída.
+Verificação 84% concluída.
+Verificação 85% concluída.
+Verificação 85% concluída.
+Verificação 86% concluída.
+Verificação 86% concluída.
+Verificação 87% concluída.
+Verificação 87% concluída.
+Verificação 88% concluída.
+Verificação 88% concluída.
+Verificação 89% concluída.
+Verificação 89% concluída.
+Verificação 90% concluída.
+Verificação 90% concluída.
+Verificação 90% concluída.
+Verificação 91% concluída.
+Verificação 91% concluída.
+Verificação 92% concluída.
+Verificação 92% concluída.
+Verificação 93% concluída.
+Verificação 93% concluída.
+Verificação 94% concluída.
+Verificação 94% concluída.
+Verificação 95% concluída.
+Verificação 95% concluída.
+Verificação 95% concluída.
+Verificação 96% concluída.
+Verificação 96% concluída.
+Verificação 97% concluída.
+Verificação 97% concluída.
+Verificação 98% concluída.
+Verificação 98% concluída.
+Verificação 99% concluída.
+Verificação 99% concluída.
+Verificação 100% concluída.
+
+
+A Proteção de Recursos do Windows encontrou arquivos corrompidos e os reparou com êxito.
+
+Para reparos online, os detalhes são incluídos no arquivo de log CBS localizado em
+
+windir\Logs\CBS\CBS.log. Por exemplo, C:\Windows\Logs\CBS\CBS.log. Para reparos
+
+offline, os detalhes são incluídos no arquivo de log fornecido pelo sinalizador /OFFLOGFILE.
+2026-05-18 17:26:04 [OK] OK: Verify system files with SFC - SFC repaired system files
+2026-05-18 17:26:04 [INFO] START: Scan system volume
+2026-05-18 17:26:34 [INFO] NoErrorsFound
+2026-05-18 17:26:34 [OK] OK: Scan system volume - Repair-Volume -Scan executed on C:
+2026-05-18 17:26:34 [INFO] START: Schedule deep CHKDSK for next boot
+2026-05-18 17:26:34 [INFO] chkdsk.exe output:
+O tipo do sistema de arquivos Ú NTFS.
+NÒo Ú possÝvel bloquear a unidade atual.
+
+NÒo Ú possÝvel executar o CHKDSK porque o volume estß sendo usado por outro
+processo. Deseja agendar a verificaþÒo
+deste volume para a pr¾xima vez em que o sistema for reiniciado? (S/N) S 
+
+Este volume serß verificado da pr¾xima vez que o sistema for reiniciado.
+2026-05-18 17:26:34 [OK] OK: Schedule deep CHKDSK for next boot - CHKDSK /F /R scheduled; result will be appended to the log after restart
+2026-05-18 17:26:34 [INFO] START: Restore original power settings
+2026-05-18 17:26:34 [OK] OK: Restore original power settings - Original power configuration restored
+2026-05-18 17:26:34 [INFO] START: Generate final summary
+2026-05-18 17:26:34 [INFO] ===== SUMMARY =====
+2026-05-18 17:26:34 [INFO] OK | Temporarily disable power settings for maintenance | Hibernation and Fast Startup temporarily disabled
+2026-05-18 17:26:34 [INFO] OK | Configure and run Windows Disk Cleanup | CleanMgr automated cleanup completed
+2026-05-18 17:26:34 [INFO] OK | Clean residual temporary files | Residual temporary files and recycle bin processed
+2026-05-18 17:26:34 [INFO] OK | Clean Windows Update cache | Download cache and catalog cache processed
+2026-05-18 17:26:34 [INFO] OK | Search, download, and install Windows updates | Installed/processed: 1. Restart required: False
+2026-05-18 17:26:34 [INFO] OK | Repair Windows image with DISM RestoreHealth | DISM RestoreHealth completed
+2026-05-18 17:26:34 [INFO] OK | Clean Windows components with DISM StartComponentCleanup | DISM StartComponentCleanup completed
+2026-05-18 17:26:34 [INFO] OK | Verify system files with SFC | SFC repaired system files
+2026-05-18 17:26:34 [INFO] OK | Scan system volume | Repair-Volume -Scan executed on C:
+2026-05-18 17:26:34 [INFO] OK | Schedule deep CHKDSK for next boot | CHKDSK /F /R scheduled; result will be appended to the log after restart
+2026-05-18 17:26:34 [INFO] OK | Restore original power settings | Original power configuration restored
+2026-05-18 17:26:34 [INFO] Restart required: True
+2026-05-18 17:26:34 [INFO] CHKDSK scheduled: True
+2026-05-18 17:26:34 [INFO] Power configuration restored: True
+2026-05-18 17:26:34 [OK] OK: Generate final summary - Summary written to C:\Logs\itechbr-20260518_172219.log
+2026-05-18 17:26:34 [INFO] ===== ITECHBR MAINTENANCE FINISHED =====
+2026-05-18 17:26:35 [WARN] Automatic restart in 60 seconds. Use shutdown /a to cancel if needed.

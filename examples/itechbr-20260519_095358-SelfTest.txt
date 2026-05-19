@@ -1,0 +1,41 @@
+2026-05-19 09:53:58 [INFO] ===== ITECHBR MAINTENANCE SELF-TEST STARTED =====
+2026-05-19 09:53:58 [INFO] Log: C:\Logs\itechbr-20260519_095358.log
+2026-05-19 09:53:58 [INFO] START: Self-test native command runner
+2026-05-19 09:53:58 [INFO] whoami.exe output:
+TESTER-d0ad0\ITechBR
+2026-05-19 09:53:58 [OK] OK: Self-test native command runner - Native command execution and output capture OK
+2026-05-19 09:53:58 [INFO] START: Self-test command input piping
+2026-05-19 09:53:58 [INFO] findstr.exe output:
+SELFTEST_INPUT
+2026-05-19 09:53:58 [OK] OK: Self-test command input piping - Command input piping OK
+2026-05-19 09:53:58 [INFO] START: Self-test powercfg command access
+2026-05-19 09:53:59 [INFO] powercfg.exe output:
+Os seguintes estados de suspensão estão disponíveis neste sistema:
+    Espera (S3)
+
+Os seguintes estados de suspensão não estão disponíveis neste sistema:
+    Modo de espera (S1)
+	O firmware do sistema não oferece suporte a este estado de espera.
+
+    Modo de espera (S2)
+	O firmware do sistema não oferece suporte a este estado de espera.
+
+    Hibernar
+	A hibernação não foi habilitada.
+
+    Em Espera (S0 Ocioso com Baixo Consumo de Energia)
+	O firmware do sistema não dá suporte a este estado de espera.
+
+    Suspensão Híbrida
+	A hibernação não está disponível.
+
+    Inicialização Rápida
+	A hibernação não está disponível.
+2026-05-19 09:53:59 [OK] OK: Self-test powercfg command access - powercfg.exe command access OK
+2026-05-19 09:53:59 [INFO] START: Generate self-test summary
+2026-05-19 09:53:59 [INFO] ===== SELF-TEST SUMMARY =====
+2026-05-19 09:53:59 [INFO] OK | Self-test native command runner | Native command execution and output capture OK
+2026-05-19 09:53:59 [INFO] OK | Self-test command input piping | Command input piping OK
+2026-05-19 09:53:59 [INFO] OK | Self-test powercfg command access | powercfg.exe command access OK
+2026-05-19 09:53:59 [OK] OK: Generate self-test summary - Self-test summary written to C:\Logs\itechbr-20260519_095358.log
+2026-05-19 09:53:59 [INFO] ===== ITECHBR MAINTENANCE SELF-TEST FINISHED =====
