@@ -5,7 +5,7 @@
 ![Status](https://img.shields.io/badge/Status-Active-success)
 ![License](https://img.shields.io/badge/License-MIT-green)
 
-Automated Windows maintenance, repair and update workflow for technical service environments.
+Automated Windows maintenance, repair and update workflow for technical service and enterprise infrastructure environments.
 
 ---
 
@@ -28,6 +28,15 @@ Designed to:
 - Improve system reliability
 - Automate Windows repair and update routines
 - Generate structured logs for traceability
+
+---
+
+## 🧠 Key Highlights
+
+- **Enterprise Deployment Ready:** Designed to seamlessly integrate into corporate OS staging, provisioning pipelines, and reference machine engineering.
+- **Headless Operation Flow:** Fully scriptable and policy-compliant automation that runs cleanly via administrative shells or remote deployment agents.
+- **Multi-Language Parsing Resiliency:** Resolves OS language locale boundaries during runtime text audits, ensuring reliable diagnostic capture across localized Windows installations.
+- **Telemetry-Ready Records:** Generates persistent, auditable execution logs optimized for compliance mapping and hardware degradation analysis.
 
 ---
 
@@ -115,37 +124,35 @@ This enables:
 
 ---
 
-## 🔁 Workflow
+## 🔁 Automated Workflow
+
+The script executes a deterministic, sequential pipeline designed for unattended operations:
 
 ```text
-Launch → Clean → Update → Repair → Check Disk → Restore Settings → Restart → Log Results
+[Init] ──> [Power Staging] ──> [Deep Clean] ──> [OS Patching] ──> [Image Repair] ──> [Disk Check] ──> [Rollback State]
 ```
 
-```text
-1. Run launcher or PowerShell script
-2. Create timestamped maintenance log
-3. Temporarily adjust power settings
-4. Clean temporary and update cache files
-5. Search, download and install Windows updates
-6. Repair Windows image with DISM
-7. Verify system files with SFC
-8. Scan and schedule disk repair
-9. Restore hibernation and Fast Startup
-10. Restart automatically when required
-11. Append CHKDSK results after reboot
-```
+1. **Privilege & Environment Initialization:** Validates administrative privileges, generates a timestamped execution log path (C:\Logs), and provisions background logging structures.
+2. **Power Subsystem Staging:** Temporarily captures initial state and suspends Hibernation and Fast Startup (powercfg.exe) to isolate the OS from hybrid boot locks during maintenance tasks.
+3. **Storage & Cache Purging:** Executes automated system volume cleanup (cleanmgr.exe /sagerun) and purges temporary files, system distribution caches, and update download folders.
+4. **Automated OS Patching:** Interface orchestration with the Windows Update API to search, accept EULAs, download, and install pending security updates without manual prompts.
+5. **Component Store Integrity Repair:** Sequential execution of DISM (/RestoreHealth and /StartComponentCleanup) to verify and fix the Windows component store metadata.
+6. **System File Verification:** Runs sfc /scannow with automated localized output parsing (supporting multi-language responses) to identify and correct integrity violations.
+7. **Post-Boot Disk Diagnostics:** Schedules deep file system diagnostics (CHKDSK) for the next boot sequence and registers a transient persistence script (Scheduled Task) to aggregate post-reboot disk results into the primary session log.
+8. **Power Configuration Rollback:** Restores original machine hibernation and fast-startup states to preserve the native end-user boot experience.
+9. **Automated Lifecycle Restart:** Flags and triggers a system reboot if updates or storage repairs require a post-execution state change.
+
 
 ---
 
 ## 🏭 Production Ready
 
-This workflow is designed for real-world IT environments:
+This workflow is meticulously engineered for production-grade IT infrastructures:
 
-- No manual interaction required
-- Consistent execution across multiple machines
-- Structured logging for observability
-- Safe technician-friendly defaults
-- Designed for repair shops and field support
+- **Zero Prompt Intervention:** Completely unattended execution model, eliminating manual technician interaction and GUI blocking.
+- **Deterministic Behavior:** Consistent execution profiles across heterogeneous hardware setups and different Windows 10/11 builds.
+- **Observability Framework:** Built-in structured logging system that acts as a telemetry foundation for historical system tracking.
+- **Fail-Safe State Containment:** Hardened error handling (`trap` blocks) that triggers automated environmental rollbacks (restoring power and subsystem states) if execution breaks unexpectedly.
 
 ---
 
@@ -174,45 +181,59 @@ itechbr-windows-maintenance/
 
 ## ▶️ Usage
 
-Run the launcher as administrator:
+To execute the core automation wrapper using administrative privileges:
 
 ```bat
 scripts\ITech.bat
 ```
 
-Or run the PowerShell script directly:
+Alternatively, invoke the core PowerShell execution script directly from an administrative console:
 
 ```powershell
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\ITech-Maintenance.ps1"
 ```
 
-Optional parameters:
+Script Execution Parameters
+Customize execution paths via parameters:
 
 ```powershell
+# Run validation self-test suite without modifying production flags
 .\scripts\ITech-Maintenance.ps1 -SelfTest
+
+# Block automatic reboots after patch orchestration finishes
 .\scripts\ITech-Maintenance.ps1 -NoRestart
+
+# Bypass patch management pipeline
 .\scripts\ITech-Maintenance.ps1 -SkipWindowsUpdate
+
+# Suppress volume sector diagnostic scheduling
 .\scripts\ITech-Maintenance.ps1 -SkipChkdsk
 ```
 
-Recommended validation before running full maintenance:
+Pre-Deployment Verification
+It is recommended to validate execution capabilities before initiating a maintenance pipeline:
 
 ```powershell
 .\scripts\ITech-Maintenance.ps1 -SelfTest
 ```
 
-`-SelfTest` validates logging, native command execution, command input piping and `powercfg.exe` access without running Windows Update, DISM, SFC, CHKDSK or restart actions.
+`-SelfTest` switch runs a synthetic test suite verifying active logging channels, native command subsystem piping capability, and administrative `powercfg.exe` visibility without invoking irreversible mutation processes (DISM, SFC, Updates, or reboots).
 
 ---
 
 ## 📌 Use Cases
 
-- Preventive maintenance
-- Repair shop workflows
-- Post-service Windows optimization
-- Windows Update repair routines
-- System file integrity checks
-- Client device preparation before delivery
+### 🏢 Corporate Infrastructure & SysAdmin
+- **Golden Image Staging:** Automated preparation, deep cleanup, and optimization of Windows reference machines before disk image capture (Sysprep/Clonezilla).
+- **Post-Deployment Validation:** Unattended validation runner (`-SelfTest`) to ensure core OS integrity, logging access, and subsystem functionality immediately after mass provisioning.
+- **Enterprise Patch Management:** Safe, unattended execution of critical Windows Updates across staged environments without requiring manual technician GUI interaction.
+- **SysAdmin Staging Routines:** Automated compliance run for newly unboxed hardware units prior to enterprise enrollment.
+
+### 🛠️ Technical Service & Field Operations
+- **Preventive Maintenance Workflows:** Standardized routine for client devices to maximize operating system reliability and longevity.
+- **Automated OS Recovery & Repair:** One-click deployment script to systematically isolate and repair corrupted system files (DISM/SFC) and volume errors.
+- **Post-Service Optimization:** Deep system cache purging and power settings restoration to deliver a clean, fast, and stable OS to the end user.
+- **Client Device Preparation:** Turnkey delivery preparation script guaranteeing optimized state delivery before client handoff.
 
 ---
 
@@ -228,16 +249,6 @@ Detailed documentation is available in the [docs](./docs) directory.
 - Windows 10 or Windows 11
 - Windows PowerShell 5.1 or newer
 - Internet connection for Windows Update
-
----
-
-## 🧠 Key Highlights
-
-- Real-world implementation
-- Fully unattended maintenance workflow
-- Designed for IT technicians and support teams
-- Focused on reliability, consistency and traceability
-- Generates professional logs for service records
 
 ---
 
