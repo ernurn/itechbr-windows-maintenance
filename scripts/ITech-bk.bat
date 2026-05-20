@@ -3,11 +3,8 @@ title ITechBR Windows Maintenance
 color 0A
 setlocal EnableExtensions
 
-:: Base directory
-set BASE_DIR=%~dp0
-
-:: Main script
-set PS_SCRIPT=%BASE_DIR%scripts\main.ps1
+set SCRIPT_DIR=%~dp0
+set PS_SCRIPT=%SCRIPT_DIR%ITech-Maintenance.ps1
 
 echo ============================================
 echo        ITechBR Windows Maintenance
@@ -18,12 +15,11 @@ echo.
 if not exist "%PS_SCRIPT%" (
     echo ERROR: PowerShell script not found:
     echo %PS_SCRIPT%
-    echo.
     pause
     exit /b 1
 )
 
-:: Check administrator privileges
+:: Check for admin privileges
 net session >nul 2>&1
 if %errorlevel% neq 0 (
     echo Requesting administrator privileges...
@@ -36,11 +32,11 @@ echo.
 
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%"
 
-echo.
-
 if %errorlevel% neq 0 (
+    echo.
     echo Maintenance finished with errors.
 ) else (
+    echo.
     echo Maintenance completed successfully.
 )
 
