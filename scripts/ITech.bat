@@ -7,7 +7,7 @@ setlocal EnableExtensions
 set BASE_DIR=%~dp0
 
 :: Main script
-set PS_SCRIPT=%BASE_DIR%scripts\main.ps1
+set PS_SCRIPT=%BASE_DIR%main.ps1
 
 echo ============================================
 echo        ITechBR Windows Maintenance

@@ -72,32 +72,20 @@ if (Test-Path $ModulesPath) {
 # ========================================
 # INITIALIZATION
 # ========================================
+try {
 
-Initialize-Logging
-Initialize-Reporting
+    Assert-AdministrativePrivileges
 
-Write-Log "===== ITECHBR MAINTENANCE STARTED ====="
-Write-Log "Framework version: 2.0.0-modular"
+    Initialize-Logging
+    Initialize-Reporting
 
-# ========================================
-# SELF-TEST AUTOMATION
-# ========================================
-if ($SelfTest) {
-    Write-Log "Self-Test flag detected. Verifying logging and reporting subsystems..." -Level "WARN"
-    
-    # Simulate adding tasks to the reporting engine
-    Add-Result -Task "OS Verification" -Status "OK" -Detail "Windows 11 build validated"
-    Add-Result -Task "Cache Cleanup" -Status "WARN" -Detail "SoftwareDistribution was locked but cleared"
-    Add-Result -Task "SFC Component Repair" -Status "ERROR" -Detail "Corrupted files found and could not be fixed automatically"
+    Write-Log "===== ITECHBR MAINTENANCE STARTED ====="
+    Write-Log "Framework version: 2.0.0-modular"
+    Write-Log "Administrative privileges validated successfully." -Level "OK"
 
-    # Extract and display the collected report results in console
-    $TestResults = Get-Results
-    Write-Log "Reporting engine collected ($($TestResults.Count)) tasks successfully." -Level "OK"
-    
-    foreach ($Result in $TestResults) {
-        Write-Log "Task: $($Result.Task) | Status: $($Result.Status) | Detail: $($Result.Detail)" -Level "INFO"
-    }
+}
+catch {
 
-    Write-Log "===== ITECHBR SELF-TEST COMPLETED =====" -Level "OK"
-    Exit 0
+    Write-Error $_.Message
+    Exit 1
 }
