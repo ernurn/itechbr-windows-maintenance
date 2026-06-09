@@ -1,7 +1,7 @@
 # === ITechBR Framework Custom Ignores ===
+CLAUDE.md
 test.ps1
 ITech-bk.bat
-ITech-Maintenance.ps1
 
 # === Environment & Backups ===
 *.log
