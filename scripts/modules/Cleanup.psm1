@@ -19,6 +19,9 @@ $script:ExcludedProfiles = @(
     "desktop.ini"
 )
 
+# Import the core NativeCommand module so we can reuse the generic wrapper.
+Import-Module (Join-Path $PSScriptRoot "..\core\NativeCommand.psm1") -Force
+
 # ========================================
 # WINDOWS TEMP CLEANUP
 # ========================================
@@ -145,10 +148,10 @@ function Set-CleanMgrAutomation {
                 -Task "CleanMgr Configuration" `
                 -Status "SKIPPED" `
                 -Detail "cleanmgr.exe not present on this Windows installation."
-                
+
             return
         }
-        
+
         $BaseRegistryPath = "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Explorer\VolumeCaches"
         $StateNumber = "0001"
 
@@ -197,35 +200,25 @@ function Invoke-NativeDiskCleanup {
                 -Task "Native Disk Cleanup" `
                 -Status "SKIPPED" `
                 -Detail "cleanmgr.exe not present on this Windows installation."
-            
+
             return
         }
-                
-        $CleanProcess = Start-Process `
-            -FilePath "cleanmgr.exe" `
-            -ArgumentList "/sagerun:1" `
-            -NoNewWindow `
-            -PassThru `
-            -Wait
 
-        if ($CleanProcess.ExitCode -eq 0) {
+        $result = Invoke-NativeCommand -FilePath "cleanmgr.exe" -Arguments @("/sagerun:1") -SuccessExitCodes @(0) -TimeoutMinutes 30 -HeartbeatSeconds 300
 
+        if ($result.ExitCode -eq 0) {
             Write-Log "Native Windows Disk Cleanup completed successfully." -Level "OK"
-
             Add-Result `
                 -Task "Native Disk Cleanup" `
                 -Status "OK" `
                 -Detail "cleanmgr.exe completed successfully."
         }
         else {
-
-            throw "cleanmgr.exe exited with code $($CleanProcess.ExitCode)"
+            throw "cleanmgr.exe exited with code $($result.ExitCode)"
         }
     }
     catch {
-
         Write-Log "Native Disk Cleanup failed: $($_.Exception.Message)" -Level "ERROR"
-
         Add-Result `
             -Task "Native Disk Cleanup" `
             -Status "ERROR" `

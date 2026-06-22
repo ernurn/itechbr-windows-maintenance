@@ -29,6 +29,9 @@ function script:Write-RepairLog {
     }
 }
 
+# Import the core NativeCommand module for unified native command execution.
+Import-Module (Join-Path $PSScriptRoot "..\\core\\NativeCommand.psm1") -Force
+
 function script:Write-RepairResult {
     param(
         [Parameter(Mandatory = $true)]
@@ -126,89 +129,6 @@ function script:Convert-TextForMatch {
     return $builder.ToString().ToLowerInvariant()
 }
 
-function script:Invoke-RepairNativeCommand {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$FilePath,
-
-        [string[]]$Arguments = @(),
-
-        [int[]]$SuccessExitCodes = @(0),
-
-        [int]$TimeoutMinutes = 0,
-
-        [int]$HeartbeatSeconds = 300
-    )
-
-    $argumentString = Join-RepairCommandArguments -Arguments $Arguments
-    $commandId = [guid]::NewGuid().ToString("N")
-    $stdoutPath = Join-Path $env:TEMP "itechbr-repair-$commandId.out"
-    $stderrPath = Join-Path $env:TEMP "itechbr-repair-$commandId.err"
-    $started = Get-Date
-    $lastHeartbeat = $started
-
-    try {
-        $targetCommand = if ([string]::IsNullOrWhiteSpace($argumentString)) {
-            "`"$FilePath`""
-        }
-        else {
-            "`"$FilePath`" $argumentString"
-        }
-
-        $commandLine = "$targetCommand > `"$stdoutPath`" 2> `"$stderrPath`""
-        $process = Start-Process `
-            -FilePath "cmd.exe" `
-            -ArgumentList @("/d", "/s", "/c", "`"$commandLine`"") `
-            -PassThru `
-            -WindowStyle Hidden
-
-        while (-not $process.WaitForExit(1000)) {
-            $elapsed = (Get-Date) - $started
-
-            if ($HeartbeatSeconds -gt 0 -and ((Get-Date) - $lastHeartbeat).TotalSeconds -ge $HeartbeatSeconds) {
-                Write-RepairLog "$FilePath is still running after $([math]::Round($elapsed.TotalMinutes, 1)) minutes" -Level "INFO"
-                $lastHeartbeat = Get-Date
-            }
-
-            if ($TimeoutMinutes -gt 0 -and $elapsed.TotalMinutes -ge $TimeoutMinutes) {
-                try {
-                    $process.Kill() | Out-Null
-                }
-                catch {}
-
-                throw "$FilePath timed out after $TimeoutMinutes minutes"
-            }
-        }
-
-        $process.WaitForExit()
-        $process.Refresh()
-
-        $stdout = Read-RepairOutputFile -Path $stdoutPath
-        $stderr = Read-RepairOutputFile -Path $stderrPath
-        if ($null -eq $stdout) { $stdout = "" }
-        if ($null -eq $stderr) { $stderr = "" }
-
-        if ($stdout.Trim()) {
-            Write-RepairLog "$FilePath output:`n$($stdout.Trim())" -Level "INFO"
-        }
-        if ($stderr.Trim()) {
-            Write-RepairLog "$FilePath error output:`n$($stderr.Trim())" -Level "WARN"
-        }
-
-        if ($process.ExitCode -notin $SuccessExitCodes) {
-            throw "$FilePath finished with exit code $($process.ExitCode)"
-        }
-
-        return [pscustomobject]@{
-            ExitCode = $process.ExitCode
-            Output   = $stdout
-            Error    = $stderr
-        }
-    }
-    finally {
-        Remove-Item -LiteralPath $stdoutPath, $stderrPath -Force -ErrorAction SilentlyContinue
-    }
-}
 
 function script:Get-SystemDriveLetter {
     param()
@@ -267,7 +187,7 @@ function Invoke-DismRestoreHealth {
     try {
         Write-RepairLog "Starting DISM RestoreHealth..." -Level "INFO"
 
-        $commandResult = Invoke-RepairNativeCommand `
+        $commandResult = Invoke-NativeCommand `
             -FilePath "dism.exe" `
             -Arguments @("/Online", "/Cleanup-Image", "/RestoreHealth") `
             -TimeoutMinutes 180 `
@@ -317,7 +237,7 @@ function Invoke-DismStartComponentCleanup {
     try {
         Write-RepairLog "Starting DISM StartComponentCleanup..." -Level "INFO"
 
-        $commandResult = Invoke-RepairNativeCommand `
+        $commandResult = Invoke-NativeCommand `
             -FilePath "dism.exe" `
             -Arguments @("/Online", "/Cleanup-Image", "/StartComponentCleanup") `
             -TimeoutMinutes 120 `
@@ -371,7 +291,7 @@ function Invoke-SfcScan {
     try {
         Write-RepairLog "Starting SFC system file verification..." -Level "INFO"
 
-        $commandResult = Invoke-RepairNativeCommand `
+        $commandResult = Invoke-NativeCommand `
             -FilePath "sfc.exe" `
             -Arguments @("/scannow") `
             -SuccessExitCodes @(0, 1, 2, 3) `

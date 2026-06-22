@@ -8,7 +8,9 @@
     management for maintenance workflows.
 #>
 
-$script:Results = New-Object System.Collections.Generic.List[object]
+if ($null -eq $script:Results) {
+    $script:Results = New-Object System.Collections.Generic.List[object]
+}
 
 function Initialize-Reporting {   
     if ($null -eq $script:Results) {
