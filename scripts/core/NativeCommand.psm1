@@ -1,4 +1,4 @@
-# <#
+<#
 .SYNOPSIS
     Generic wrapper for executing native Windows commands within the ITechBR framework.
 
@@ -8,7 +8,7 @@
     The function is safe to call from other modules and respects the framework's logging
     and reporting guards, allowing it to be used in isolated test contexts.
 
-    Public entry point: `Invoke-NativeCommand`
+    Public entry point: Invoke-NativeCommand
 #>
 
 Set-StrictMode -Version Latest
@@ -95,16 +95,16 @@ function Invoke-NativeCommand {
         Executes a native Windows executable with optional arguments, timeout, and heartbeat.
     .DESCRIPTION
         The wrapper creates temporary stdout/stderr files, streams progress via the framework's
-        logging guard, and throws on non‑successful exit codes. It returns a hashtable containing
-        `StdOut`, `StdErr`, `ExitCode`, and `Duration` for deterministic downstream consumption.
+        logging guard, and throws on non-successful exit codes. It returns a hashtable containing
+        StdOut, StdErr, ExitCode, and Duration for deterministic downstream consumption.
     .PARAMETER FilePath
         Full path to the executable to run.
     .PARAMETER Arguments
-        Array of argument strings – will be escaped according to PowerShell rules.
+        Array of argument strings - will be escaped according to PowerShell rules.
     .PARAMETER SuccessExitCodes
         Array of exit codes considered successful (default: 0).
     .PARAMETER InputText
-        Optional multiline string that will be piped into the process' STDIN.
+        Optional multiline string that will be piped into the process STDIN.
     .PARAMETER TimeoutMinutes
         If >0, the process will be terminated after the given number of minutes.
     .PARAMETER HeartbeatSeconds
@@ -125,16 +125,16 @@ function Invoke-NativeCommand {
 
     # Build command line safely
     $argumentString = Join-CommandArguments -Arguments $Arguments
-    $commandId = [guid]::NewGuid().ToString('N')
+    $commandId = [guid]::NewGuid().ToString("N")
     $stdoutPath = Join-Path $env:TEMP "itechbr-native-$commandId.out"
     $stderrPath = Join-Path $env:TEMP "itechbr-native-$commandId.err"
     $started = Get-Date
     $lastHeartbeat = $started
 
     $targetCommand = if ([string]::IsNullOrWhiteSpace($argumentString)) {
-        "\"$FilePath\""
+        "`"$FilePath`""
     } else {
-        "\"$FilePath\" $argumentString"
+        "`"$FilePath`" $argumentString"
     }
 
     if (-not [string]::IsNullOrEmpty($InputText)) {
@@ -144,7 +144,7 @@ function Invoke-NativeCommand {
     }
 
     $commandLine = "$targetCommand > `"$stdoutPath`" 2> `"$stderrPath`""
-    $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/d /s /c `"$commandLine`"" -PassThru -WindowStyle Hidden
+    $process = Start-Process -FilePath "cmd.exe" -ArgumentList "/d", "/s", "/c", "`"$commandLine`"" -PassThru -WindowStyle Hidden
 
     while (-not $process.WaitForExit(1000)) {
         $elapsed = (Get-Date) - $started
