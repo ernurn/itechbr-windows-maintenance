@@ -73,15 +73,15 @@ function Clear-UserTempFiles {
         $ProfilesProcessed = 0
         $UserProfiles = Get-ChildItem "C:\Users" -Directory -ErrorAction SilentlyContinue
 
-        foreach ($Profile in $UserProfiles) {
-            if ($script:ExcludedProfiles -contains $Profile.Name) {
+        foreach ($UserProfile in $UserProfiles) {
+            if ($script:ExcludedProfiles -contains $UserProfile.Name) {
                 continue
             }
 
-            $UserTempPath = Join-Path $Profile.FullName "AppData\Local\Temp"
+            $UserTempPath = Join-Path $UserProfile.FullName "AppData\Local\Temp"
 
             if (Test-Path $UserTempPath) {
-                Write-Log "Cleaning temporary files for profile: $($Profile.Name)" -Level "INFO"
+                Write-Log "Cleaning temporary files for profile: $($UserProfile.Name)" -Level "INFO"
 
                 # Optimized direct deletion targeting contents inside the user's temp directory
                 Remove-Item -Path (Join-Path $UserTempPath "*") -Recurse -Force -ErrorAction SilentlyContinue
@@ -238,8 +238,65 @@ function Invoke-SystemCleanup {
     Clear-SystemRecycleBin
     Set-CleanMgrAutomation
     Invoke-NativeDiskCleanup
+    Clear-WindowsUpdateCache
 
     Write-Log "===== SYSTEM CLEANUP MODULE COMPLETED =====" -Level "OK"
+}
+
+# ========================================
+# WINDOWS UPDATE CACHE CLEANUP
+# ========================================
+
+function Clear-WindowsUpdateCache {
+    Write-Log "Starting Windows Update cache cleanup..." -Level "INFO"
+
+    $services = @("bits", "wuauserv", "cryptsvc")
+    $servicesStopped = @()
+
+    try {
+        foreach ($service in $services) {
+            $svc = Get-Service -Name $service -ErrorAction SilentlyContinue
+            if ($svc -and $svc.Status -eq 'Running') {
+                Stop-Service -Name $service -Force -ErrorAction SilentlyContinue
+                $servicesStopped += $service
+            }
+        }
+
+        # Remove Windows Update download cache
+        $wuDownloadPath = "C:\Windows\SoftwareDistribution\Download"
+        if (Test-Path $wuDownloadPath) {
+            Remove-Item -Path (Join-Path $wuDownloadPath "*") -Recurse -Force -ErrorAction SilentlyContinue
+            Write-Log "Windows Update download cache cleared." -Level "OK"
+        }
+
+        # Remove catroot2 cache
+        $catrootPath = "C:\Windows\System32\catroot2"
+        if (Test-Path $catrootPath) {
+            # Remove files but preserve the directory structure and catroot2\*.log
+            Get-ChildItem -Path $catrootPath -File -ErrorAction SilentlyContinue |
+                Where-Object { $_.Extension -ne '.log' } |
+                Remove-Item -Force -ErrorAction SilentlyContinue
+            Write-Log "Catroot2 cache cleared." -Level "OK"
+        }
+
+        Add-Result `
+            -Task "Windows Update Cache Cleanup" `
+            -Status "OK" `
+            -Detail "WU cache and catroot2 cleared successfully."
+    }
+    catch {
+        Write-Log "Windows Update cache cleanup failed: $($_.Exception.Message)" -Level "ERROR"
+        Add-Result `
+            -Task "Windows Update Cache Cleanup" `
+            -Status "ERROR" `
+            -Detail $_.Exception.Message
+    }
+    finally {
+        # Restart services that were stopped
+        foreach ($service in $servicesStopped) {
+            Start-Service -Name $service -ErrorAction SilentlyContinue
+        }
+    }
 }
 
 Export-ModuleMember -Function `
@@ -248,4 +305,5 @@ Export-ModuleMember -Function `
     Clear-UserTempFiles,
     Clear-SystemRecycleBin,
     Set-CleanMgrAutomation,
-    Invoke-NativeDiskCleanup
+    Invoke-NativeDiskCleanup,
+    Clear-WindowsUpdateCache

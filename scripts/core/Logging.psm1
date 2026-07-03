@@ -16,7 +16,7 @@ function Initialize-Logging {
     }
 
     $script:Timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
-    $script:LogPath = Join-Path $LogDirectory "itechbr-$script:Timestamp.log"
+    $script:LogPath = Join-Path $LogDirectory "itechbr-$($script:Timestamp).log"
 
     return $script:LogPath
 }

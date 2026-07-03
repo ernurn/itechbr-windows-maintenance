@@ -44,48 +44,6 @@ function script:Write-NativeResult {
 }
 
 # ========================================
-# INTERNAL HELPERS
-# ========================================
-
-function script:Join-CommandArguments {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string[]]$Arguments
-    )
-    $escaped = foreach ($argument in $Arguments) {
-        if ($argument -match '[\s"]') {
-            '"' + ($argument -replace '"', '""') + '"'
-        } else {
-            $argument
-        }
-    }
-    return ($escaped -join ' ')
-}
-
-function script:Read-CommandOutputFile {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path
-    )
-    if (-not (Test-Path -LiteralPath $Path)) { return "" }
-    $bytes = [System.IO.File]::ReadAllBytes($Path)
-    if ($bytes.Count -eq 0) { return "" }
-    if ($bytes.Count -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
-        return [System.Text.Encoding]::Unicode.GetString($bytes)
-    }
-    $sampleLength = [Math]::Min($bytes.Count, 200)
-    $nullOddBytes = 0
-    for ($i = 1; $i -lt $sampleLength; $i += 2) {
-        if ($bytes[$i] -eq 0) { $nullOddBytes++ }
-    }
-    if ($sampleLength -gt 20 -and $nullOddBytes -gt ($sampleLength / 4)) {
-        return [System.Text.Encoding]::Unicode.GetString($bytes)
-    }
-    $oemEncoding = [System.Text.Encoding]::GetEncoding([System.Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
-    return $oemEncoding.GetString($bytes)
-}
-
-# ========================================
 # PUBLIC FUNCTION
 # ========================================
 
@@ -95,8 +53,8 @@ function Invoke-NativeCommand {
         Executes a native Windows executable with optional arguments, timeout, and heartbeat.
     .DESCRIPTION
         The wrapper creates temporary stdout/stderr files, streams progress via the framework's
-        logging guard, and throws on non-successful exit codes. It returns a hashtable containing
-        StdOut, StdErr, ExitCode, and Duration for deterministic downstream consumption.
+        logging guard, and throws on non-successful exit codes. It returns a PSCustomObject
+        containing Output, Error, ExitCode, and Duration for deterministic downstream consumption.
     .PARAMETER FilePath
         Full path to the executable to run.
     .PARAMETER Arguments
@@ -123,8 +81,44 @@ function Invoke-NativeCommand {
         [int]$HeartbeatSeconds = 300
     )
 
+    # Helper: Escape command arguments (inline to avoid script: scope issues)
+    $JoinArguments = {
+        param([string[]]$ArgList)
+        if ($null -eq $ArgList -or $ArgList.Count -eq 0) { return "" }
+        ($ArgList | ForEach-Object {
+            if ($_ -match '[\s"]') { '"' + ($_ -replace '"', '""') + '"' } else { $_ }
+        }) -join ' '
+    }
+
+    # Helper: Read output file (inline to avoid script: scope issues)
+    $ReadOutput = {
+        param([string]$OutPath)
+        if (-not (Test-Path -LiteralPath $OutPath)) { return "" }
+        $bytes = [System.IO.File]::ReadAllBytes($OutPath)
+        if ($null -eq $bytes -or $bytes.Count -eq 0) { return "" }
+
+        # Check for UTF-16 LE BOM (0xFF, 0xFE)
+        if ($bytes.Count -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+            return [System.Text.Encoding]::Unicode.GetString($bytes)
+        }
+
+        # Detect UTF-16 LE by looking for null bytes in odd positions
+        $sampleLength = [Math]::Min($bytes.Count, 200)
+        $nullOddBytes = 0
+        for ($i = 1; $i -lt $sampleLength; $i += 2) {
+            if ($bytes[$i] -eq 0) { $nullOddBytes++ }
+        }
+        if ($sampleLength -gt 20 -and $nullOddBytes -gt ($sampleLength / 4)) {
+            return [System.Text.Encoding]::Unicode.GetString($bytes)
+        }
+
+        # Default to OEM encoding for console output
+        $oemEncoding = [System.Text.Encoding]::GetEncoding([System.Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
+        return $oemEncoding.GetString($bytes)
+    }
+
     # Build command line safely
-    $argumentString = Join-CommandArguments -Arguments $Arguments
+    $argumentString = & $JoinArguments $Arguments
     $commandId = [guid]::NewGuid().ToString("N")
     $stdoutPath = Join-Path $env:TEMP "itechbr-native-$commandId.out"
     $stderrPath = Join-Path $env:TEMP "itechbr-native-$commandId.err"
@@ -160,18 +154,26 @@ function Invoke-NativeCommand {
     $process.WaitForExit()
     $process.Refresh()
 
-    $stdout = Read-CommandOutputFile -Path $stdoutPath
-    $stderr = Read-CommandOutputFile -Path $stderrPath
+    # Small delay to ensure file handles are released before reading
+    Start-Sleep -Milliseconds 100
 
-    if ($stdout.Trim()) { Write-NativeLog "$FilePath stdout:`n$($stdout.Trim())" -Level "INFO" }
-    if ($stderr.Trim()) { Write-NativeLog "$FilePath stderr:`n$($stderr.Trim())" -Level "WARN" }
+    $stdout = & $ReadOutput $stdoutPath
+    $stderr = & $ReadOutput $stderrPath
+
+    if ($stdout -and $stdout.Trim()) { Write-NativeLog "$FilePath stdout:`n$($stdout.Trim())" -Level "INFO" }
+    if ($stderr -and $stderr.Trim()) { Write-NativeLog "$FilePath stderr:`n$($stderr.Trim())" -Level "WARN" }
 
     if ($process.ExitCode -notin $SuccessExitCodes) {
         throw "$FilePath exited with code $($process.ExitCode)"
     }
 
     $duration = (Get-Date) - $started
-    return @{ StdOut = $stdout; StdErr = $stderr; ExitCode = $process.ExitCode; Duration = $duration }
+    return [pscustomobject]@{
+        Output   = $stdout
+        Error    = $stderr
+        ExitCode = $process.ExitCode
+        Duration = $duration
+    }
 }
 
 Export-ModuleMember -Function Invoke-NativeCommand
