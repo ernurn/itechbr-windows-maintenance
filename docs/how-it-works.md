@@ -11,8 +11,10 @@ This document serves as an architectural blueprint outlining the underlying Wind
 The orchestration engine sequences tasks through a rigid linear pipeline designed to ensure environmental isolation and predictability:
 
 ```text
-[Launch] ──> [Elevation] ──> [Telemetry Init] ──> [State Staging] ──> [Cache Purge] ──> [Patching API] ──> [Component Repair] ──> [Sector Diagnostics] ──> [State Rollback] ──> [Lifecycle Boot]
+[Launch] ──> [Elevation] ──> [Telemetry Init] ──> [State Staging] ──> [System Inventory] ──> [Cache Purge] ──> [Component Repair] ──> [Patching API] ──> [CHKDSK Scheduling] ──> [State Rollback] ──> [Lifecycle Boot]
 ```
+
+The modular orchestrator (`scripts/main.ps1`) follows this pipeline with guaranteed power state restoration via `try/catch/finally` boundaries.
 
 1. **Launcher Ingestion:** Initial initialization phase driven by the low-overhead Batch wrapper or direct administrative PowerShell instantiation.
 2. **Security Token Evaluation:** Validation of administrative security contexts (Elevated Token Validation).
@@ -34,7 +36,7 @@ The orchestration engine sequences tasks through a rigid linear pipeline designe
 Before committing targeting nodes to destructive or high-latency maintenance tasks, the automation engine exposes a synthetic dry-run capability:
 
 ```powershell
-.\scripts\ITech-Maintenance.ps1 -SelfTest
+.\scripts\main.ps1 -SelfTest
 ```
 
 The `-SelfTest` framework explicitly asserts the validity of the following logical constraints without mutating the operating system state:

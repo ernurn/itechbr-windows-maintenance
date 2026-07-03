@@ -6,6 +6,26 @@ This project adheres to a standard semantic-inspired versioning model (`MAJOR.MI
 
 ---
 
+## [v2.0.0] - 2026-07-03
+
+### 🏗 Architecture
+- **Modular architecture completed** - Full migration from monolithic to modular structure
+- **Legacy pipeline fully migrated** - `scripts/main.ps1` is now the functional orchestrator
+- **Core modules decoupled** - Logging, Reporting, Security, NativeCommand as independent units
+- **Functional modules isolated** - CleanUp, Diagnostics, WindowsUpdate, Repair, Inventory with private helpers
+
+### 🚀 Added
+- **Inventory subsystem** - Hardware, OS, software, and asset collection via `Invoke-Inventory`
+- **Clear-WindowsUpdateCache** - Automated cache purging for SoftwareDistribution and catroot2
+- **Standardized NativeCommand API** - Returns PSCustomObject with .Output, .Error, .ExitCode, .Duration properties
+
+### 🧯 Robustness & Core Engineering
+- **Inline helper functions** - Resolved scope issues in NativeCommand.psm1 for reliable module loading
+- **Enhanced error containment** - Global try/catch/finally with guaranteed power state restoration
+- **Multi-session compatibility** - Modules can be loaded independently without initialization order issues
+
+---
+
 ## [v1.1.0] - 2026-05-19
 
 ### 🚀 Added
@@ -63,6 +83,5 @@ Initial production release of **ITechBR Windows Maintenance**.
 Future improvements targeted for subsequent minor/major release milestones:
 
 - **Observability:** Rich-text HTML interactive maintenance analytics and status report generation.
-- **Architecture:** Transition to a completely decoupled modular profile structure.
 - **Scalability:** WinRM integration for multi-node remote orchestration and configuration scaling.
-- **Lifecycle:** Inventory mapping schemas for native Asset Management systems and hardware tracking.
+- **Logging format:** Enhanced JSON output for SIEM integration.

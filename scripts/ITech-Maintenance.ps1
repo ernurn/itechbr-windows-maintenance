@@ -1,4 +1,13 @@
 # ========================================
+# LEGACY ENTRY POINT
+#
+# Deprecated since v2.0.0
+#
+# Replaced by:
+# scripts/main.ps1
+#
+# Kept only for rollback purposes.
+# ========================================
 # ITechBR - Automated Windows Maintenance
 # Author: Ernesto Nurnberg / ITechBR
 # Purpose: Maintain, repair, and update Windows with minimal technician interaction
