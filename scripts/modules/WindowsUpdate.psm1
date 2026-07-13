@@ -72,13 +72,35 @@ function script:Get-PendingWindowsUpdates {
 
     Write-WUALog "Searching for pending Windows updates..." -Level "INFO"
 
+    # Ensure WU services are running - they may have been stopped by cleanup
+    $wuServices = @("wuauserv", "cryptsvc", "bits")
+    foreach ($svc in $wuServices) {
+        $service = Get-Service -Name $svc -ErrorAction SilentlyContinue
+        if ($service -and $service.Status -ne "Running") {
+            try {
+                Start-Service -Name $svc -ErrorAction Stop
+            }
+            catch {
+                Write-WUALog "Could not start $svc service: $($_.Exception.Message)" -Level "WARN"
+            }
+        }
+    }
+
+    # Cooldown to allow services to stabilize after possible cleanup
+    # bits service may need extra time to reinitialize the catalog
+    Start-Sleep -Seconds 15
+
     $Session = New-Object -ComObject Microsoft.Update.Session
     $Searcher = $Session.CreateUpdateSearcher()
     $SearchResult = $Searcher.Search($script:WUASearchCriteria)
 
-    # WUA ResultCode: 0=No error, 1=SearchInProgress, 2=Failed
-    if ($SearchResult.ResultCode -ne 0) {
-        throw "Windows Update search failed with ResultCode=$($SearchResult.ResultCode)."
+    # WUA ResultCode: 0=No error, 1=SearchInProgress, 2=SucceededWithErrors, 3=Failed
+    if ($SearchResult.ResultCode -eq 3) {
+        throw "Windows Update search failed completely. ResultCode=$($SearchResult.ResultCode)."
+    }
+    elseif ($SearchResult.ResultCode -eq 2) {
+        Write-WUALog "Windows Update search returned 'Succeeded with errors' - some results may be incomplete." -Level "WARN"
+        # Continue anyway - we can still enumerate whatever updates were found
     }
 
     return [pscustomobject]@{

@@ -30,7 +30,11 @@ function script:Write-RepairLog {
 }
 
 # Import the core NativeCommand module for unified native command execution.
-Import-Module (Join-Path $PSScriptRoot "..\\core\\NativeCommand.psm1") -Force
+# NOTE: Removed redundant import - main.ps1 loads core modules first in global scope.
+# The import was causing PowerShell to re-scope Invoke-NativeCommand when -Force was used,
+# making it unavailable for subsequent calls in main.ps1.
+# If running this module standalone, uncomment the line below:
+# Import-Module (Join-Path $PSScriptRoot "..\\core\\NativeCommand.psm1") -Force
 
 function script:Write-RepairResult {
     param(
@@ -496,7 +500,6 @@ function Invoke-SystemRepair {
             -MemberType NoteProperty `
             -Name Results `
             -Value $results
-            -Force
         
         return $result
     }

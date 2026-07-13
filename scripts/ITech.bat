@@ -34,10 +34,15 @@ if %errorlevel% neq 0 (
 echo Running maintenance workflow...
 echo.
 
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%"
+:: Pass all arguments to PowerShell script
+set PS_ARGS=%*
+if "%PS_ARGS%"=="" (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%"
+) else (
+    powershell.exe -NoProfile -ExecutionPolicy Bypass -File "%PS_SCRIPT%" -%PS_ARGS%
+)
 
 echo.
-
 if %errorlevel% neq 0 (
     echo Maintenance finished with errors.
 ) else (

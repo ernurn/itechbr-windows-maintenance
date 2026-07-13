@@ -20,7 +20,11 @@ $script:ExcludedProfiles = @(
 )
 
 # Import the core NativeCommand module so we can reuse the generic wrapper.
-Import-Module (Join-Path $PSScriptRoot "..\core\NativeCommand.psm1") -Force
+# NOTE: Removed redundant import - main.ps1 loads core modules first in global scope.
+# The -Force parameter was causing PowerShell to re-scope Invoke-NativeCommand, making it
+# unavailable for subsequent calls in main.ps1 after modules are imported.
+# If running this module standalone, uncomment the line below:
+# Import-Module (Join-Path $PSScriptRoot "..\core\NativeCommand.psm1") -Force
 
 # ========================================
 # WINDOWS TEMP CLEANUP
@@ -115,6 +119,28 @@ function Clear-SystemRecycleBin {
     Write-Log "Starting system-wide Recycle Bin cleanup..." -Level "INFO"
 
     try {
+        # Check if Recycle Bin has any items first
+        $recycleBinHasItems = $false
+        try {
+            $shell = New-Object -ComObject Shell.Application
+            $bins = $shell.Namespace(10)
+            if ($bins.Items().Count -gt 0) {
+                $recycleBinHasItems = $true
+            }
+        }
+        catch {
+            # If COM check fails, proceed anyway - Clear-RecycleBin will report
+        }
+
+        if (-not $recycleBinHasItems) {
+            Write-Log "Recycle Bin is empty or could not be enumerated." -Level "SKIPPED"
+            Add-Result `
+                -Task "Recycle Bin Cleanup" `
+                -Status "SKIPPED" `
+                -Detail "Recycle Bin was already empty."
+            return
+        }
+
         Clear-RecycleBin -Force -ErrorAction Stop
 
         Write-Log "Recycle Bin cleanup completed successfully." -Level "OK"

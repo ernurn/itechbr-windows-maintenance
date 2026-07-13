@@ -71,7 +71,7 @@ foreach ($module in $CoreModules) {
 }
 
 # NOW initialize logging and reporting (modules can now safely call Write-Log/Add-Result)
-Initialize-Logging
+$script:LogPath = Initialize-Logging
 Initialize-Reporting
 
 # ========================================
@@ -187,59 +187,123 @@ function Register-ChkdskLogCollector {
     )
 
     $collectorPath = Join-Path $env:TEMP "ITech-ChkdskCollector.ps1"
+    $statePath = Join-Path $env:TEMP "ITech-MainLogPath.txt"
+    $TargetLogPath | Out-File -FilePath $statePath -Encoding ASCII -Force
+
     $collectorScript = @'
 param(
     [Parameter(Mandatory = $true)]
+    [string]$ScriptPath,
     [string]$LogPath
 )
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = "Stop"
+
+# Fallback: read from state file if LogPath not passed as parameter
+if (-not $LogPath) {
+    $statePath = Join-Path $env:TEMP "ITech-MainLogPath.txt"
+    $LogPath = Get-Content -Path $statePath -Encoding ASCII -ErrorAction SilentlyContinue
+}
+
+# Validate LogPath
+if (-not $LogPath) {
+    Write-Host "CRITICAL: LogPath not provided and state file not found. Cannot continue." -ForegroundColor Red
+    exit 1
+}
 
 function Add-Line {
     param([string]$Text)
     $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    "$time [INFO] $Text" | Out-File -FilePath $LogPath -Append -Encoding UTF8
+    $line = "$time [INFO] $Text"
+    try {
+        $line | Out-File -FilePath $LogPath -Append -Encoding ASCII -ErrorAction Stop
+    }
+    catch {
+        $altLog = Join-Path $env:TEMP "ITech-ChkdsResults-$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
+        try {
+            $line | Out-File -FilePath $altLog -Append -Encoding ASCII -ErrorAction Stop
+            Write-Host "Wrote to alternative log: $altLog" -ForegroundColor Yellow
+        }
+        catch {
+            Write-Host "FAILED to write to any log: $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+    Write-Host $line
 }
 
 Start-Sleep -Seconds 90
 Add-Line "===== CHKDSK RESULT AFTER RESTART ====="
 
-for ($attempt = 1; $attempt -le 10; $attempt++) {
+# Use wevtutil instead of Get-WinEvent for non-admin compatibility
+$xPath = "*[System[(EventID=1001)]]"
+for ($attempt = 1; $attempt -le 15; $attempt++) {
     try {
-        $events = Get-WinEvent -FilterHashtable @{ LogName = "Application"; Id = 1001 } -MaxEvents 50 -ErrorAction Stop
-        $event = $events | Where-Object {
-            ($_.ProviderName -eq "Microsoft-Windows-Wininit" -or $_.ProviderName -eq "Wininit") -and
-            ($_.Message -match "CHKDSK|NTFS|file system|sistema de arquivos|sistema de archivos")
-        } | Select-Object -First 1
-
-        if ($event) {
-            Add-Line ($event.Message.Trim())
+        $eventXml = & wevtutil.exe qe Application /q:$xPath /rd:true /c:5 /f:text 2>&1 | Out-String
+        if ($eventXml -and $eventXml -match "CHKDSK|NTFS|chkdsk|sistema de arquivos|checked|verificado|concluído|Não há problemas") {
+            Add-Line "CHKDSK event detected via wevtutil (system language)."
+            Add-Line "Raw event output follows:"
+            Add-Line $eventXml
             break
         }
-
-        Add-Line "CHKDSK event not found on attempt $attempt. Waiting before retry."
+        Add-Line "CHKDSK event not found on attempt $($attempt). Waiting before retry."
     }
     catch {
-        Add-Line "Unable to read CHKDSK event on attempt $attempt: $($_.Exception.Message)"
+        Add-Line "Unable to read CHKDSK event on attempt $($attempt): $($_.Exception.Message)"
     }
 
     Start-Sleep -Seconds 60
 }
 
+# Cleanup HKCU Run key
 try {
-    Unregister-ScheduledTask -TaskName "ITechBR-ChkdskLogCollector" -Confirm:$false -ErrorAction SilentlyContinue
-    Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
+    $startupKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+    Remove-ItemProperty -Path $startupKey -Name "ITechBR-ChkdskCollector" -ErrorAction SilentlyContinue
+}
+catch {}
+
+# Self-delete the collector script
+try {
+    if ($ScriptPath -and (Test-Path -LiteralPath $ScriptPath)) {
+        Remove-Item -LiteralPath $ScriptPath -Force -ErrorAction SilentlyContinue
+    }
 }
 catch {}
 '@
 
-    Set-Content -LiteralPath $collectorPath -Value $collectorScript -Encoding UTF8 -Force
+    try {
+        Set-Content -LiteralPath $collectorPath -Value $collectorScript -Encoding ASCII -Force
+        Write-Log "CHKDSK collector script written to: $collectorPath" -Level "INFO"
+    }
+    catch {
+        Write-Log "Failed to write CHKDSK collector script: $($_.Exception.Message)" -Level "ERROR"
+        return
+    }
 
-    $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$collectorPath`" -LogPath `"$TargetLogPath`""
-    $trigger = New-ScheduledTaskTrigger -AtStartup
-    $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
-    $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 15)
+    # Register as Scheduled Task with highest privileges (requires admin)
+    try {
+        $taskName = "ITechBR-ChkdskLogCollector"
+        $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$collectorPath`" -LogPath `"$script:LogPath`" -ScriptPath `"$collectorPath`""
+        $trigger = New-ScheduledTaskTrigger -AtStartup
+        $principal = New-ScheduledTaskPrincipal -UserId "SYSTEM" -RunLevel Highest
+        Register-ScheduledTask -TaskName $taskName -Action $action -Trigger $trigger -Principal $principal -Force | Out-Null
+        Write-Log "CHKDSK collector registered as scheduled task: $taskName" -Level "OK"
+        return
+    }
+    catch {
+        Write-Log "Failed to register scheduled task: $($_.Exception.Message)" -Level "WARN"
+    }
 
-    Register-ScheduledTask -TaskName "ITechBR-ChkdskLogCollector" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
-    Write-Log "CHKDSK log collector scheduled task registered." -Level "OK"
+    # Fallback: HKCU Run registry (works without admin, but no elevation guarantee)
+    try {
+        $startupKey = "HKCU:\Software\Microsoft\Windows\CurrentVersion\Run"
+        $cmdValue = "powershell.exe -NoProfile -WindowStyle Hidden -ExecutionPolicy Bypass -File `"$collectorPath`" -LogPath `"$script:LogPath`" -ScriptPath `"$collectorPath`""
+        Set-ItemProperty -Path $startupKey -Name "ITechBR-ChkdskCollector" -Value $cmdValue -ErrorAction Stop
+        Write-Log "CHKDSK collector registered via HKCU startup registry." -Level "OK"
+    }
+    catch {
+        Write-Log "Failed to register CHKDSK collector fallback: $($_.Exception.Message)" -Level "WARN"
+    }
 }
 
 # ========================================
@@ -252,7 +316,7 @@ function Invoke-SelfTest {
     # Test 1: Native command runner (whoami)
     Invoke-Step -Task "Self-test native command runner" -ScriptBlock {
         $result = Invoke-NativeCommand -FilePath "whoami.exe" -TimeoutMinutes 1 -HeartbeatSeconds 5
-        if ([string]::IsNullOrWhiteSpace($result.StdOut)) {
+        if ([string]::IsNullOrWhiteSpace($result.Output)) {
             throw "Expected whoami.exe output was not captured"
         }
         "Native command execution and output capture OK"
@@ -261,7 +325,7 @@ function Invoke-SelfTest {
     # Test 2: powercfg access
     Invoke-Step -Task "Self-test powercfg command access" -ScriptBlock {
         $result = Invoke-NativeCommand -FilePath "powercfg.exe" -Arguments @("/a") -TimeoutMinutes 1 -HeartbeatSeconds 5
-        if ([string]::IsNullOrWhiteSpace($result.StdOut)) {
+        if ([string]::IsNullOrWhiteSpace($result.Output)) {
             throw "Expected powercfg.exe output was not captured"
         }
         "powercfg.exe command access OK"
@@ -427,10 +491,33 @@ try {
             $yesAnswer = if ([System.Globalization.CultureInfo]::CurrentUICulture.TwoLetterISOLanguageName -eq "en") { "Y" } else { "S" }
             $inputAnswers = "$yesAnswer`r`n"
 
-            Invoke-NativeCommand -FilePath "chkdsk.exe" -Arguments @($env:SystemDrive, "/F", "/R") -SuccessExitCodes @(0, 1, 2, 3) -InputText $inputAnswers -TimeoutMinutes 10 -HeartbeatSeconds 60 | Out-Null
+            $result = Invoke-NativeCommand -FilePath "chkdsk.exe" -Arguments @($env:SystemDrive, "/F", "/R") -SuccessExitCodes @(0, 1, 2, 3) -InputText $inputAnswers -TimeoutMinutes 10 -HeartbeatSeconds 60
 
-            $script:ChkdskScheduled = $true
-            "CHKDSK /F /R scheduled; result will be appended to the log after restart."
+            # Check if CHKDSK was scheduled (look for scheduling confirmation in output)
+            # EN: "will be checked", "next time", "scheduled on restart"
+            # PT: "será verificado", "da próxima vez", "agendado"
+            $schedMatch = $result.Output.ToLowerInvariant()
+            if ($schedMatch -match "verificado|agendado|will be checked|next time|check.*restart|scheduled.*restart") {
+                $script:ChkdskScheduled = $true
+                $script:RestartRequired = $true
+                "CHKDSK /F /R scheduled; system restart will be triggered to complete."
+            }
+            else {
+                $script:ChkdskScheduled = $true
+                "CHKDSK /F /R scheduled; result will be appended to the log after restart."
+            }
+
+            $script:ChkdskResultCollected = $false
+            try {
+                $collectedOutput = wevtutil.exe qe Application /q:"*[System[EventID=1001]]" /rd:true /c:1 /f:text 2>&1
+                if ($collectedOutput) {
+                    Write-Log "Found recent CHKDSK event in Application log." -Level "INFO"
+                    $script:ChkdskResultCollected = $true
+                }
+            }
+            catch {
+                Write-Log "Could not pre-check for CHKDSK event: $($_.Exception.Message)" -Level "WARN"
+            }
         }
     }
     else {

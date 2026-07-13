@@ -342,7 +342,7 @@ function Get-WindowsUpdateStatus {
             }
         }
         catch {
-            if (Get-Command Write-Log -ErrorAction SilentlyContinue) {
+            if (Get-Command -Name Write-Log -ErrorAction SilentlyContinue) {
                 Write-Log "Failed to retrieve Windows Update status: $($_.Exception.Message)" -Level "ERROR"
             }
 
@@ -351,12 +351,104 @@ function Get-WindowsUpdateStatus {
     }
 }
 
+function Get-ChkdskResult {
+    <#
+    .SYNOPSIS
+        Retrieves CHKDSK results from Windows event logs after a scheduled scan.
+    .DESCRIPTION
+        Searches for CHKDSK completion events in both Application and System event logs.
+        CHKDSK writes to the Winlogon/Wininit event log after an offline scan completes.
+    .PARAMETER HoursBack
+        Number of hours to search back for CHKDSK events (default: 168 = 1 week).
+    .EXAMPLE
+        Get-ChkdskResult
+        Get-ChkdskResult -HoursBack 48
+    #>
+    [CmdletBinding()]
+    param(
+        [int]$HoursBack = 168
+    )
+
+    process {
+        try {
+            Write-Log "Collecting CHKDSK results from event logs..." -Level "INFO"
+
+            $StartTime = (Get-Date).AddHours(-$HoursBack)
+            $ChkdskEvents = @()
+
+            # Search in Application log - Event ID 1001 from Wininit/Winlogon providers
+            $AppFilters = @(
+                @{ LogName = 'Application'; Id = 1001; ProviderName = 'Microsoft-Windows-Wininit', 'Winlogon' },
+                @{ LogName = 'Application'; Id = 1001; StartTime = $StartTime }
+            )
+
+            foreach ($Filter in $AppFilters) {
+                try {
+                    $Events = Get-WinEvent -FilterHashtable $Filter -MaxEvents 10 -ErrorAction SilentlyContinue
+                    if ($Events) { $ChkdskEvents += $Events }
+                }
+                catch { }
+            }
+
+            # Search in System log for CHKDSK-related events
+            try {
+                $Events = Get-WinEvent -FilterHashtable @{ LogName = 'System'; StartTime = $StartTime } -MaxEvents 100 -ErrorAction SilentlyContinue
+                foreach ($Evt in $Events) {
+                    $Message = $Evt.Message
+                    if ($Message -match "chkdsk|NTFS|file system|verificado|agendado|checked|repaired|bad sectors|cluster") {
+                        $ChkdskEvents += $Evt
+                    }
+                }
+            }
+            catch { }
+
+            # Filter for CHKDSK-specific content
+            $ValidEvents = $ChkdskEvents | Where-Object {
+                $Message = $_.Message
+                $Message -match "chkdsk|NTFS|file system|verificado|agendado|checked|repaired|bad sectors|cluster|surface scan|mapping"
+            } | Sort-Object TimeCreated -Descending
+
+            if (-not $ValidEvents) {
+                Write-Log "No CHKDSK events found in the specified timeframe." -Level "WARN"
+                return [PSCustomObject]@{
+                    Found = $false
+                    Message = "No CHKDSK results found in event logs"
+                    Timestamp = $null
+                }
+            }
+
+            $LatestEvent = $ValidEvents | Select-Object -First 1
+            Write-Log "CHKDSK event found: $($LatestEvent.TimeCreated)" -Level "OK"
+
+            return [PSCustomObject]@{
+                Found = $true
+                Timestamp = $LatestEvent.TimeCreated
+                LogName = $LatestEvent.LogName
+                EventId = $LatestEvent.Id
+                Provider = $LatestEvent.ProviderName
+                Message = $LatestEvent.Message.Trim()
+            }
+        }
+        catch {
+            if (Get-Command -Name Write-Log -ErrorAction SilentlyContinue) {
+                Write-Log "Failed to retrieve CHKDSK results: $($_.Exception.Message)" -Level "WARN"
+            }
+            return [PSCustomObject]@{
+                Found = $false
+                Message = $_.Exception.Message
+                Timestamp = $null
+            }
+        }
+    }
+}
+
 Export-ModuleMember -Function `
-    Get-OperatingSystemInfo, 
-    Get-MemoryInfo, 
-    Get-DiskUsageInfo, 
-    Get-SystemUptime, 
-    Get-DiskHealthInfo, 
+    Get-OperatingSystemInfo,
+    Get-MemoryInfo,
+    Get-DiskUsageInfo,
+    Get-SystemUptime,
+    Get-DiskHealthInfo,
     Get-CriticalEvents,
-    Get-NetworkInfo, 
-    Get-WindowsUpdateStatus
+    Get-NetworkInfo,
+    Get-WindowsUpdateStatus,
+    Get-ChkdskResult

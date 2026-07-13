@@ -21,6 +21,23 @@ function Initialize-Logging {
     return $script:LogPath
 }
 
+function script:Convert-TextToAsciiSafe {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Text
+    )
+    if ([string]::IsNullOrEmpty($Text)) { return "" }
+    $normalized = $Text.Normalize([System.Text.NormalizationForm]::FormD)
+    $sb = New-Object System.Text.StringBuilder($normalized.Length)
+    foreach ($char in $normalized.ToCharArray()) {
+        $category = [System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($char)
+        if ($category -ne [System.Globalization.UnicodeCategory]::NonSpacingMark) {
+            [void]$sb.Append($char)
+        }
+    }
+    return $sb.ToString()
+}
+
 function Write-Log {
     param(
         [Parameter(Mandatory = $true)]
@@ -35,7 +52,8 @@ function Write-Log {
     }
 
     $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $line = "$time [$Level] $Message"
+    $safeMessage = Convert-TextToAsciiSafe -Text $Message
+    $line = "$time [$Level] $safeMessage"
 
     $line | Out-File -FilePath $script:LogPath -Append -Encoding ascii
 
@@ -48,4 +66,4 @@ function Write-Log {
     }
 }
 
-Export-ModuleMember -Function Initialize-Logging, Write-Log
+Export-ModuleMember -Function Initialize-Logging, Write-Log, Convert-TextToAsciiSafe

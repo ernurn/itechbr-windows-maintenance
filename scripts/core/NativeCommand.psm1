@@ -160,8 +160,11 @@ function Invoke-NativeCommand {
     $stdout = & $ReadOutput $stdoutPath
     $stderr = & $ReadOutput $stderrPath
 
-    if ($stdout -and $stdout.Trim()) { Write-NativeLog "$FilePath stdout:`n$($stdout.Trim())" -Level "INFO" }
-    if ($stderr -and $stderr.Trim()) { Write-NativeLog "$FilePath stderr:`n$($stderr.Trim())" -Level "WARN" }
+    # Normalize output for ASCII-safe logging (removes diacritics)
+    $safeStdout = if ($stdout -and $stdout.Trim()) { Convert-TextToAsciiSafe -Text $stdout }
+    $safeStderr = if ($stderr -and $stderr.Trim()) { Convert-TextToAsciiSafe -Text $stderr }
+    if ($safeStdout) { Write-NativeLog "$FilePath stdout:`n$($safeStdout.Trim())" -Level "INFO" }
+    if ($safeStderr) { Write-NativeLog "$FilePath stderr:`n$($safeStderr.Trim())" -Level "WARN" }
 
     if ($process.ExitCode -notin $SuccessExitCodes) {
         throw "$FilePath exited with code $($process.ExitCode)"
