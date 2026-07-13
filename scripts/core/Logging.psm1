@@ -21,14 +21,15 @@ function Initialize-Logging {
     return $script:LogPath
 }
 
-function script:Convert-TextToAsciiSafe {
+function Convert-TextToAsciiSafe {
     param(
         [Parameter(Mandatory = $true)]
         [string]$Text
     )
     if ([string]::IsNullOrEmpty($Text)) { return "" }
+    # Remove diacritics by normalizing and stripping non-spacing marks
     $normalized = $Text.Normalize([System.Text.NormalizationForm]::FormD)
-    $sb = New-Object System.Text.StringBuilder($normalized.Length)
+    $sb = New-Object System.Text.StringBuilder
     foreach ($char in $normalized.ToCharArray()) {
         $category = [System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($char)
         if ($category -ne [System.Globalization.UnicodeCategory]::NonSpacingMark) {
