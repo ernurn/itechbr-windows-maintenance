@@ -160,11 +160,33 @@ function Invoke-NativeCommand {
     $stdout = & $ReadOutput $stdoutPath
     $stderr = & $ReadOutput $stderrPath
 
-    # Normalize output for ASCII-safe logging (removes diacritics)
+    # Normalize and filter output for ASCII-safe logging (removes diacritics, suppresses progress bars)
     $safeStdout = if ($stdout -and $stdout.Trim()) { Convert-TextToAsciiSafe -Text $stdout }
     $safeStderr = if ($stderr -and $stderr.Trim()) { Convert-TextToAsciiSafe -Text $stderr }
-    if ($safeStdout) { Write-NativeLog "$FilePath stdout:`n$($safeStdout.Trim())" -Level "INFO" }
-    if ($safeStderr) { Write-NativeLog "$FilePath stderr:`n$($safeStderr.Trim())" -Level "WARN" }
+
+    # Filter out progress bar lines before logging (after ASCII conversion, accents are removed)
+    if ($safeStdout) {
+        $filteredStdout = ($safeStdout -split "`r`n" | Where-Object {
+            $line = $_.Trim()
+            # Match percentage lines in en, pt-br, es (after ASCII conversion)
+            $isProgress = $line -match '(Se completo|se completo).*[0-9]+\.?[0-9]*%|[0-9]+\.?[0-9]*%\s*(complet[ao]?[a-z]*|conclui[a-z]+|completed|done|comprobacion|comprobando)'
+            $line -and ($line -notmatch '^\[.*[=%]+.*%.*\]$' -and -not $isProgress)
+        }) -join "`r`n"
+        if ($filteredStdout) {
+            Write-NativeLog "$FilePath stdout:`n$($filteredStdout.Trim())" -Level "INFO"
+        }
+    }
+    if ($safeStderr) {
+        $filteredStderr = ($safeStderr -split "`r`n" | Where-Object {
+            $line = $_.Trim()
+            # Match percentage lines in en, pt-br, es (after ASCII conversion)
+            $isProgress = $line -match '(Se completo|se completo).*[0-9]+\.?[0-9]*%|[0-9]+\.?[0-9]*%\s*(complet[ao]?[a-z]*|conclui[a-z]+|completed|done|comprobacion|comprobando)'
+            $line -and ($line -notmatch '^\[.*[=%]+.*%.*\]$' -and -not $isProgress)
+        }) -join "`r`n"
+        if ($filteredStderr) {
+            Write-NativeLog "$FilePath stderr:`n$($filteredStderr.Trim())" -Level "WARN"
+        }
+    }
 
     if ($process.ExitCode -notin $SuccessExitCodes) {
         throw "$FilePath exited with code $($process.ExitCode)"

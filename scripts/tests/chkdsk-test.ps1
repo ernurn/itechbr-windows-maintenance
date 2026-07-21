@@ -34,7 +34,6 @@ if (-not ([Security.Principal.WindowsPrincipal][Security.Principal.WindowsIdenti
 # Import core modules
 $scriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $corePath = Join-Path (Split-Path $scriptRoot) "core"
-$modulesPath = Join-Path (Split-Path $scriptRoot) "modules"
 
 Import-Module (Join-Path $corePath "Logging.psm1") -Force
 Import-Module (Join-Path $corePath "Security.psm1") -Force
@@ -53,6 +52,37 @@ function Register-ChkdskLogCollector {
 
     $collectorPath = Join-Path $env:TEMP "ITech-ChkdskCollector-Test.ps1"
     $collectorScript = @'
+# Uses Convert-TextToAsciiSafe from Logging.psm1 (imported earlier) - inline fallback
+function Convert-ToAsciiSafe {
+    param([string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return "" }
+    $normalized = $Text.Normalize([System.Text.NormalizationForm]::FormD)
+    $sb = New-Object System.Text.StringBuilder
+    foreach ($char in $normalized.ToCharArray()) {
+        $category = [System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($char)
+        if ($category -ne [System.Globalization.UnicodeCategory]::NonSpacingMark) {
+            [void]$sb.Append($char)
+        }
+    }
+    return $sb.ToString()
+}
+
+function Get-ChkdskRelevantLines {
+    param([string]$Text)
+    $normalized = Convert-ToAsciiSafe -Text $Text
+    # Split by both \n and embedded \r\n (wevtutil outputs inline carriage returns)
+    $lines = $normalized -split "`r?`n" | Where-Object {
+        $line = $_.Trim()
+        # Filter out progress percentage lines - supports en, pt-br, es
+        $isProgress = $line -match "(Se completo|se completo).*[0-9]+\.?[0-9]*%|[0-9]+\.?[0-9]*%\s*(complet[ao]?[a-z]*|conclui[a-z]+|completed|done|comprobacion|comprobando)"
+        # Keep only essential CHKDSK lines - summary key metrics
+        $isChkDsk = $line -match "registros de archivos procesados|sectores defectuosos|espacio total|KB disponibles|entradas de Yndice procesadas|examin.*el sistema.*problemas|proteccion de recursos"
+        $isUseless = $line -match "Event\[|] Log Name:|Source:|Date:|Event ID:|Task:|Level:|Opcode:|Keyword:|User:|User Name:|Computer:|Description:|Sinal:|Resposta:|Falha no bucket|Nome do Evento:|Verificando novamente|Checking again|Status do Relat.*rio:|Bucket com hash:|Esses arquivos talvez|NULL|Duracion de la fase|Liberando"
+        return ($line -and -not $isProgress -and $isChkDsk -and -not $isUseless)
+    }
+    return ($lines | Where-Object { $_ -and $_.Trim() }) -join "`r`n"
+}
+
 param(
     [Parameter(Mandatory = $true)]
     [string]$LogPath,
@@ -89,11 +119,13 @@ Add-Line "===== CHKDSK RESULT AFTER RESTART ====="
 for ($attempt = 1; $attempt -le 15; $attempt++) {
     try {
         Write-Host "Attempt ${attempt}: Querying Application log for EventID 1001..." -ForegroundColor Gray
-        $eventXml = wevtutil.exe qe Application /q:"*[System[(EventID=1001)]]" /rd:true /c:5 /f:text 2>&1 | Out-String
+        $eventXml = wevtutil.exe qe Application /q:"*[System[(EventID=1001)]]" /rd:true /c:1 /f:text 2>&1 | Out-String
         Write-Host "Raw eventXml length: $($eventXml.Length) chars" -ForegroundColor Gray
-        if ($eventXml -and $eventXml -match "CHKDSK|NTFS|chkdsk|sistema de arquivos|verificado|checked|concluído|concluido|Não há problemas") {
+        $filteredOutput = Get-ChkdskRelevantLines -Text $eventXml
+        if ($filteredOutput) {
             Add-Line "CHKDSK event detected via wevtutil on attempt ${attempt}."
-            Add-Line $eventXml
+            Add-Line "Results summary:"
+            Add-Line $filteredOutput
             Write-Host "CHKDSK result collected successfully!" -ForegroundColor Green
             break
         }
@@ -172,8 +204,8 @@ $yesAnswer = if ([System.Globalization.CultureInfo]::CurrentUICulture.TwoLetterI
 $inputAnswers = "$yesAnswer`r`n"
 Write-Log "Scheduling CHKDSK /F /R on $env:SystemDrive..." -Level "INFO"
 
-# Use echo with pipe for chkdsk input (equivalent to Invoke-NativeCommand behavior)
-$chkdskOutput = echo $inputAnswers | & chkdsk.exe $env:SystemDrive "/F" "/R" 2>&1
+# Use Write-Output with pipe for chkdsk input (equivalent to Invoke-NativeCommand behavior)
+$chkdskOutput = Write-Output $inputAnswers | & chkdsk.exe $env:SystemDrive "/F" "/R" 2>&1
 # Normalize output for ASCII-safe logging
 $normalizedOutput = Convert-TextToAsciiSafe -Text $chkdskOutput
 $normalizedOutput | Out-File -FilePath $script:LogPath -Append -Encoding ASCII
