@@ -167,7 +167,33 @@ itechbr-windows-maintenance/
 │
 ├── scripts/
 │   ├── ITech.bat
-│   └── ITech-Maintenance.ps1
+│   ├── main.ps1                    # Modular orchestrator (v2.0.0-modular)
+│   ├── ITech-Maintenance.ps1       # Legacy monolithic script
+│   │
+│   ├── core/                       # Infrastructure modules
+│   │   ├── Logging.psm1
+│   │   ├── Reporting.psm1
+│   │   ├── Security.psm1
+│   │   └── NativeCommand.psm1
+│   │
+│   ├── modules/                    # Functional modules
+│   │   ├── CleanUp.psm1
+│   │   ├── Diagnostics.psm1
+│   │   ├── Repair.psm1
+│   │   ├── WindowsUpdate.psm1
+│   │   └── Inventory.psm1
+│   │
+│   └── tests/                      # Test suites
+│       ├── All.Tests.ps1
+│       ├── Core.Tests.ps1
+│       ├── Logging.Tests.ps1
+│       ├── Security.Tests.ps1
+│       ├── Reporting.Tests.ps1
+│       ├── NativeCommand.Tests.ps1
+│       ├── Diagnostics.Tests.ps1
+│       ├── Inventory.Tests.ps1
+│       ├── Cleanup.Tests.ps1
+│       └── chkdsk-Test.ps1
 │
 ├── docs/
 │   ├── changelog.md
@@ -181,43 +207,46 @@ itechbr-windows-maintenance/
 
 ## ▶️ Usage
 
-To execute the core automation wrapper using administrative privileges:
+To execute the modular automation framework with administrative privileges:
 
 ```bat
 scripts\ITech.bat
 ```
 
-Alternatively, invoke the core PowerShell execution script directly from an administrative console:
+Or invoke the PowerShell orchestrator directly:
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File ".\scripts\ITech-Maintenance.ps1"
+.\scripts\main.ps1               # Production orchestrator (v2.0.0-modular)
+.\scripts\test.ps1                 # Read-only integration tests
 ```
 
-Script Execution Parameters
-Customize execution paths via parameters:
+### Script Parameters
 
 ```powershell
-# Run validation self-test suite without modifying production flags
-.\scripts\ITech-Maintenance.ps1 -SelfTest
+# Run validation self-test suite
+.\scripts\main.ps1 -SelfTest
 
-# Block automatic reboots after patch orchestration finishes
-.\scripts\ITech-Maintenance.ps1 -NoRestart
+# Block automatic reboots after patch orchestration
+.\scripts\main.ps1 -NoRestart
 
-# Bypass patch management pipeline
-.\scripts\ITech-Maintenance.ps1 -SkipWindowsUpdate
+# Bypass Windows Update pipeline
+.\scripts\main.ps1 -SkipWindowsUpdate
 
-# Suppress volume sector diagnostic scheduling
-.\scripts\ITech-Maintenance.ps1 -SkipChkdsk
+# Skip CHKDSK scheduling
+.\scripts\main.ps1 -SkipChkdsk
 ```
 
-Pre-Deployment Verification
-It is recommended to validate execution capabilities before initiating a maintenance pipeline:
+### Pre-Deployment Verification
 
 ```powershell
-.\scripts\ITech-Maintenance.ps1 -SelfTest
+.\scripts\test.ps1   # Tests all subsystems without OS modification
 ```
 
-`-SelfTest` switch runs a synthetic test suite verifying active logging channels, native command subsystem piping capability, and administrative `powercfg.exe` visibility without invoking irreversible mutation processes (DISM, SFC, Updates, or reboots).
+### Legacy Script (kept for rollback)
+
+```powershell
+.\scripts\ITech-Maintenance.ps1 -SelfTest  # Legacy versions < 2.0
+```
 
 ---
 
@@ -254,10 +283,8 @@ Detailed documentation is available in the [docs](./docs) directory.
 
 ## 📈 Future Improvements
 
-- Optional driver update workflow
 - HTML maintenance report generation
 - Remote execution support
-- Asset inventory integration
 - Configurable task profiles
 
 ---

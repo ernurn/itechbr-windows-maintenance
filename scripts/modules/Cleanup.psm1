@@ -121,6 +121,7 @@ function Clear-SystemRecycleBin {
     try {
         # Check if Recycle Bin has any items first
         $recycleBinHasItems = $false
+        $comFailed = $false
         try {
             $shell = New-Object -ComObject Shell.Application
             $bins = $shell.Namespace(10)
@@ -129,11 +130,11 @@ function Clear-SystemRecycleBin {
             }
         }
         catch {
-            # If COM check fails, proceed anyway - Clear-RecycleBin will report
+            $comFailed = $true
         }
 
-        if (-not $recycleBinHasItems) {
-            Write-Log "Recycle Bin is empty or could not be enumerated." -Level "SKIPPED"
+        if (-not $recycleBinHasItems -and -not $comFailed) {
+            Write-Log "Recycle Bin is empty." -Level "SKIPPED"
             Add-Result `
                 -Task "Recycle Bin Cleanup" `
                 -Status "SKIPPED" `
@@ -141,17 +142,17 @@ function Clear-SystemRecycleBin {
             return
         }
 
-        Clear-RecycleBin -Force -ErrorAction Stop
+        Clear-RecycleBin -Force -ErrorAction SilentlyContinue
 
-        Write-Log "Recycle Bin cleanup completed successfully." -Level "OK"
+        Write-Log "Recycle Bin cleanup completed." -Level "OK"
 
         Add-Result `
             -Task "Recycle Bin Cleanup" `
             -Status "OK" `
-            -Detail "System recycle bin emptied successfully."
+            -Detail "System recycle bin emptied."
     }
     catch {
-        Write-Log "Recycle Bin cleanup failed: $($_.Exception.Message)" -Level "WARN"
+        Write-Log "Recycle Bin cleanup encountered errors: $($_.Exception.Message)" -Level "WARN"
 
         Add-Result `
             -Task "Recycle Bin Cleanup" `

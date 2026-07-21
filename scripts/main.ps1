@@ -78,9 +78,35 @@ Initialize-Reporting
 # INITIALIZATION
 # ========================================
 
+function Format-Duration {
+    param([TimeSpan]$TimeSpan)
+    # TODO: Handle OEM Code Pages for localized Windows systems (es, pt-br)
+    # Characters like 'Í' in 'Índice' appear as '?' in wevtutil output
+    $ts = $TimeSpan
+    if ($ts.TotalHours -ge 1) {
+        $hours = [int]($ts.TotalHours)
+        $mins = [int]($ts.TotalMinutes) - ($hours * 60)
+        $secs = [int]$ts.Seconds
+        if ($secs -gt 0) {
+            return "${hours}h ${mins}m ${secs}s"
+        }
+        return "${hours}h ${mins}m"
+    } elseif ($ts.TotalMinutes -ge 1) {
+        $mins = [int]($ts.TotalMinutes)
+        $secs = [int]$ts.Seconds
+        if ($secs -gt 0) {
+            return "${mins}m ${secs}s"
+        }
+        return "${mins}m"
+    } else {
+        return "$([int]($ts.TotalSeconds))s"
+    }
+}
+
 try {
     Assert-AdministrativePrivileges
 
+    $script:StartTime = Get-Date
     Write-Log "===== ITECHBR MAINTENANCE STARTED ====="
     Write-Log "Framework version: 2.0.0-modular"
     Write-Log "Administrative privileges validated successfully." -Level "OK"
@@ -232,6 +258,45 @@ function Add-Line {
     Write-Host $line
 }
 
+# Normalize and filter wevtutil output for clean logging
+# Inline ASCII-safe converter for the collector script
+function Convert-ToAsciiSafe {
+    param([string]$Text)
+    if ([string]::IsNullOrEmpty($Text)) { return "" }
+    $normalized = $Text.Normalize([System.Text.NormalizationForm]::FormD)
+    $sb = New-Object System.Text.StringBuilder
+    foreach ($char in $normalized.ToCharArray()) {
+        $category = [System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($char)
+        if ($category -ne [System.Globalization.UnicodeCategory]::NonSpacingMark) {
+            [void]$sb.Append($char)
+        }
+    }
+    return $sb.ToString()
+}
+
+function Get-ChkdskRelevantLines {
+    param([string]$Text)
+    $normalized = Convert-ToAsciiSafe -Text $Text
+    # Split by both \n and embedded \r\n (wevtutil outputs inline carriage returns)
+    $lines = $normalized -split "`r?`n" | Where-Object {
+        $line = $_.Trim()
+        # Filter out progress percentage lines - supports en, pt-br, es
+        $isProgress = $line -match "(Se completo|se completo).*[0-9]+\.?[0-9]*%|[0-9]+\.?[0-9]*%\s*(complet[ao]?[a-z]*|conclui[a-z]+|completed|done|comprobacion|comprobando)"
+        # Keep only essential CHKDSK lines - summary key metrics
+        $isChkDsk = $line -match "registros de archivos procesados|sectores defectuosos|espacio total|KB disponibles|entradas de Yndice procesadas|examin.*el sistema.*problemas|proteccion de recursos"
+        $isUseless = $line -match "Event\[|] Log Name:|Source:|Date:|Event ID:|Task:|Level:|Opcode:|Keyword:|User:|User Name:|Computer:|Description:|Sinal:|Resposta:|Falha no bucket|Nome do Evento:|Verificando novamente|Checking again|Status do Relat.*rio:|Bucket com hash:|Esses arquivos talvez|NULL|Duracion de la fase|Liberando"
+        return ($line -and -not $isProgress -and $isChkDsk -and -not $isUseless)
+    }
+    return ($lines | Where-Object { $_ -and $_.Trim() }) -join "`r`n"
+}
+        if ($isStageStart -and $groupedLines.Count -gt 0) {
+            $groupedLines += ""
+        }
+        $groupedLines += "  $line"
+    }
+    return ($groupedLines -join "`r`n")
+}
+
 Start-Sleep -Seconds 90
 Add-Line "===== CHKDSK RESULT AFTER RESTART ====="
 
@@ -239,11 +304,12 @@ Add-Line "===== CHKDSK RESULT AFTER RESTART ====="
 $xPath = "*[System[(EventID=1001)]]"
 for ($attempt = 1; $attempt -le 15; $attempt++) {
     try {
-        $eventXml = & wevtutil.exe qe Application /q:$xPath /rd:true /c:5 /f:text 2>&1 | Out-String
-        if ($eventXml -and $eventXml -match "CHKDSK|NTFS|chkdsk|sistema de arquivos|checked|verificado|concluído|Não há problemas") {
+        $eventXml = & wevtutil.exe qe Application /q:$xPath /rd:true /c:1 /f:text 2>&1 | Out-String
+        $filteredOutput = Get-ChkdskRelevantLines -Text $eventXml
+        if ($filteredOutput) {
             Add-Line "CHKDSK event detected via wevtutil (system language)."
-            Add-Line "Raw event output follows:"
-            Add-Line $eventXml
+            Add-Line "Results summary:"
+            Add-Line $filteredOutput
             break
         }
         Add-Line "CHKDSK event not found on attempt $($attempt). Waiting before retry."
@@ -383,16 +449,22 @@ function Invoke-Step {
         $detail = & $ScriptBlock
         $stopwatch.Stop()
 
-        $elapsed = [math]::Round($stopwatch.Elapsed.TotalSeconds, 1)
-        $detailText = if ($detail) { [string]$detail } else { "Completed in $elapsed seconds" }
+        $elapsed = $stopwatch.Elapsed.TotalSeconds
+
+        if ($detail -is [System.Management.Automation.PSObject]) {
+            # Extract detail from module return object if it has a Detail property
+            $detailText = if ($detail.Detail) { $detail.Detail } else { "Completed" }
+        } else {
+            $detailText = if ($detail) { [string]$detail } else { "Completed" }
+        }
 
         Add-Result -Task $Task -Status "OK" -Detail $detailText
-        Write-Log "Completed: $Task - $detailText" -Level "OK"
+        Write-Log "Completed: $Task" -Level "OK"
+        Write-Log ("Duration: {0}" -f (Format-Duration -TimeSpan $stopwatch.Elapsed)) -Level "INFO"
     }
     catch {
         $stopwatch.Stop()
-        $elapsed = [math]::Round($stopwatch.Elapsed.TotalSeconds, 1)
-        $detailText = "$($_.Exception.Message) (after $elapsed seconds)"
+        $detailText = $_.Exception.Message
 
         Add-Result -Task $Task -Status "ERROR" -Detail $detailText
         Write-Log "Failed: $Task - $detailText" -Level "ERROR"
@@ -495,9 +567,10 @@ try {
 
             # Check if CHKDSK was scheduled (look for scheduling confirmation in output)
             # EN: "will be checked", "next time", "scheduled on restart"
-            # PT: "será verificado", "da próxima vez", "agendado"
+            # PT: "sera verificado", "da proxima vez", "agendado"
+            # ES: "sera comprobado", "la proxima vez", "comprobado" (works with corrupted encoding)
             $schedMatch = $result.Output.ToLowerInvariant()
-            if ($schedMatch -match "verificado|agendado|will be checked|next time|check.*restart|scheduled.*restart") {
+            if ($schedMatch -match "verificado|agendado|comprobado|sera|proxima vez|will be checked|next time|check.*restart|scheduled.*restart") {
                 $script:ChkdskScheduled = $true
                 $script:RestartRequired = $true
                 "CHKDSK /F /R scheduled; system restart will be triggered to complete."
@@ -532,10 +605,49 @@ try {
     $resultsOutput = Join-Path $env:TEMP "itechbr-results-$(Get-Date -Format 'yyyyMMdd_HHmmss').txt"
     Get-Results | Format-Table -AutoSize | Out-String | Out-File -FilePath $resultsOutput -Encoding ASCII
 
+    # Write executive summary using Format-Duration
+    $endTime = Get-Date
+    $durationText = Format-Duration -TimeSpan ($endTime - $script:StartTime)
+
+    Write-Log "========================="
+    Write-Log "Maintenance Summary"
+    Write-Log "========================="
+
+    $results = Get-Results
+    $summaryTasks = @(
+        @{ Name = "Inventory";      Pattern = "Inventory" },
+        @{ Name = "Cleanup";        Pattern = "Cleanup|Temp|Recycle|CleanMgr|Update Cache" },
+        @{ Name = "Repair";         Pattern = "Repair|DISM|SFC|Volume" },
+        @{ Name = "Windows Update"; Pattern = "Windows Update" },
+        @{ Name = "CHKDSK";         Pattern = "CHKDSK" }
+    )
+
+    foreach ($taskInfo in $summaryTasks) {
+        $matched = $results | Where-Object { $_.Task -match $taskInfo.Pattern } | Select-Object -Last 1
+        if ($matched) {
+            if ($matched.Task -match "CHKDSK") {
+                $status = if ($script:ChkdskScheduled) { "Scheduled" } else { $matched.Status }
+            } else {
+                # Priority: ERROR > WARN > OK > SKIPPED
+                $hasError = $results | Where-Object { ($_.Task -match $taskInfo.Pattern) -and ($_.Status -eq "ERROR") }
+                $hasWarn = $results | Where-Object { ($_.Task -match $taskInfo.Pattern) -and ($_.Status -eq "WARN") }
+                if ($hasError) { $status = "ERROR" }
+                elseif ($hasWarn) { $status = "WARN" }
+                else { $status = $matched.Status }
+            }
+        } else {
+            $status = if ($taskInfo.Name -eq "CHKDSK" -and $script:SkipChkdsk) { "Skipped" } else { "N/A" }
+        }
+        Write-Log ("{0,-20} {1}" -f $taskInfo.Name, $status)
+    }
+
+    Write-Log "----------------------------------------"
+    Write-Log "Total duration: $durationText"
+    $restartText = if ($script:RestartRequired) { "YES" } else { "NO" }
+    Write-Log "Restart required: $restartText"
+
     Write-Log "===== ITECHBR MAINTENANCE COMPLETED ====="
     Write-Log "Results saved to: $resultsOutput"
-    Write-Log "Restart required: $($script:RestartRequired)"
-    Write-Log "CHKDSK scheduled: $($script:ChkdskScheduled)"
 }
 catch {
     Write-Log "Pipeline error: $($_.Exception.Message)" -Level "ERROR"
