@@ -6,6 +6,23 @@ This project adheres to a standard semantic-inspired versioning model (`MAJOR.MI
 
 ---
 
+## [v2.1.0] - 2026-07-23
+
+### 🏗 Refactor
+- **Consolidated native command output handling** - Single `Read-CommandOutputFile` implementation in `NativeCommand.psm1`
+- **Encoding detection unified** - UTF-8 (BOM/no-BOM), UTF-16 LE/BE (BOM/no-BOM), OEM fallback in one place
+- **Removed duplicate implementations** - Eliminated `Read-RepairOutputFile` (Repair.psm1) and legacy `Read-CommandOutputFile` (ITech-Maintenance.ps1)
+
+### ✅ Tests
+- **8 encoding test cases** added to `NativeCommand.Tests.ps1` covering ASCII, UTF-8, UTF-16 LE (with/without BOM), UTF-8 with BOM, OEM, missing/empty files
+- All core and module test suites pass
+
+### 🔧 Internal
+- Added `Test-ValidUtf8` helper for robust UTF-8 without BOM detection
+- NativeCommand now exports `Read-CommandOutputFile` publicly
+
+---
+
 ## [v2.0.1] - 2026-07-23
 
 ### Fixed

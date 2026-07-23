@@ -77,42 +77,6 @@ function script:Join-RepairCommandArguments {
     return ($escaped -join " ")
 }
 
-function script:Read-RepairOutputFile {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Path
-    )
-
-    if (-not (Test-Path -LiteralPath $Path)) {
-        return ""
-    }
-
-    $bytes = [System.IO.File]::ReadAllBytes($Path)
-    if ($bytes.Count -eq 0) {
-        return ""
-    }
-
-    if ($bytes.Count -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
-        return [System.Text.Encoding]::Unicode.GetString($bytes)
-    }
-
-    $sampleLength = [Math]::Min($bytes.Count, 200)
-    $nullOddBytes = 0
-    for ($i = 1; $i -lt $sampleLength; $i += 2) {
-        if ($bytes[$i] -eq 0) {
-            $nullOddBytes++
-        }
-    }
-
-    if ($sampleLength -gt 20 -and $nullOddBytes -gt ($sampleLength / 4)) {
-        return [System.Text.Encoding]::Unicode.GetString($bytes)
-    }
-
-    $oemEncoding = [System.Text.Encoding]::GetEncoding([System.Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
-    return $oemEncoding.GetString($bytes)
-}
-
-
 function script:Get-SystemDriveLetter {
     param()
 
