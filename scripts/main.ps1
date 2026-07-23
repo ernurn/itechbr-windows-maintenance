@@ -55,6 +55,7 @@ $ModulesPath   = Join-Path $ScriptsFolder "modules"
 
 # Import Core modules BEFORE initialization (they provide the logging/reporting infrastructure)
 $CoreModules = @(
+    "TextNormalization.psm1",
     "Logging.psm1",
     "Reporting.psm1",
     "Security.psm1",

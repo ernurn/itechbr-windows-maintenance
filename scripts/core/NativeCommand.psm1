@@ -13,6 +13,8 @@
 
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot "TextNormalization.psm1") -Force
+
 # ========================================
 # LOGGING / REPORTING GUARDS
 # ========================================

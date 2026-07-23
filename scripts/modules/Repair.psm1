@@ -11,6 +11,8 @@
 
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot "..\core\TextNormalization.psm1") -Force
+
 # ========================================
 # LOGGING / REPORTING GUARDS
 # ========================================
@@ -108,29 +110,6 @@ function script:Read-RepairOutputFile {
 
     $oemEncoding = [System.Text.Encoding]::GetEncoding([System.Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
     return $oemEncoding.GetString($bytes)
-}
-
-function script:Convert-TextForMatch {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Text
-    )
-
-    if ([string]::IsNullOrWhiteSpace($Text)) {
-        return ""
-    }
-
-    $normalized = $Text.Normalize([System.Text.NormalizationForm]::FormD)
-    $builder = New-Object System.Text.StringBuilder($normalized.Length)
-
-    foreach ($char in $normalized.ToCharArray()) {
-        $category = [System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($char)
-        if ($category -ne [System.Globalization.UnicodeCategory]::NonSpacingMark) {
-            [void]$builder.Append($char)
-        }
-    }
-
-    return $builder.ToString().ToLowerInvariant()
 }
 
 

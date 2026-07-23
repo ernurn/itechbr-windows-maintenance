@@ -24,6 +24,11 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+# Import TextNormalization module for shared text utilities
+$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$CorePath = Join-Path $ScriptRoot "core"
+Import-Module (Join-Path $CorePath "TextNormalization.psm1") -Force
+
 $LogDir = "C:\Logs"
 if (-not (Test-Path -LiteralPath $LogDir)) {
     New-Item -Path $LogDir -ItemType Directory -Force | Out-Null
@@ -124,26 +129,6 @@ function Read-CommandOutputFile {
 
     $oemEncoding = [System.Text.Encoding]::GetEncoding([System.Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
     return $oemEncoding.GetString($bytes)
-}
-
-function Convert-TextForMatch {
-    param([string]$Text)
-
-    if ($null -eq $Text) {
-        return ""
-    }
-
-    $normalized = $Text.Normalize([System.Text.NormalizationForm]::FormD)
-    $builder = New-Object System.Text.StringBuilder
-
-    foreach ($char in $normalized.ToCharArray()) {
-        $category = [System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($char)
-        if ($category -ne [System.Globalization.UnicodeCategory]::NonSpacingMark) {
-            [void]$builder.Append($char)
-        }
-    }
-
-    return $builder.ToString().ToLowerInvariant()
 }
 
 function Invoke-NativeCommand {

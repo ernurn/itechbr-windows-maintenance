@@ -6,6 +6,11 @@
     Provides timestamped logging, log initialization,
     and centralized log file management.
 #>
+
+Set-StrictMode -Version Latest
+
+Import-Module (Join-Path $PSScriptRoot "TextNormalization.psm1") -Force
+
 function Initialize-Logging {
     param(
         [string]$LogDirectory = "C:\Logs"
@@ -19,24 +24,6 @@ function Initialize-Logging {
     $script:LogPath = Join-Path $LogDirectory "itechbr-$($script:Timestamp).log"
 
     return $script:LogPath
-}
-
-function Convert-TextToAsciiSafe {
-    param(
-        [Parameter(Mandatory = $true)]
-        [string]$Text
-    )
-    if ([string]::IsNullOrEmpty($Text)) { return "" }
-    # Remove diacritics by normalizing and stripping non-spacing marks
-    $normalized = $Text.Normalize([System.Text.NormalizationForm]::FormD)
-    $sb = New-Object System.Text.StringBuilder
-    foreach ($char in $normalized.ToCharArray()) {
-        $category = [System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($char)
-        if ($category -ne [System.Globalization.UnicodeCategory]::NonSpacingMark) {
-            [void]$sb.Append($char)
-        }
-    }
-    return $sb.ToString()
 }
 
 function Write-Log {
