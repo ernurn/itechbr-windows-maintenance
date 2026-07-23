@@ -206,6 +206,149 @@ function Restore-OriginalPowerSettings {
 # CHECKDISK LOG COLLECTOR REGISTRATION
 # ========================================
 
+function Get-ChkdskCompletionEvent {
+    <#
+    .SYNOPSIS
+        Retrieves the most recent CHKDSK completion event from the Windows Event Log.
+    .DESCRIPTION
+        Queries the Application log for Event ID 1001 from the Microsoft-Windows-Wininit provider,
+        which indicates a CHKDSK completion after reboot. Returns structured data for JSON/Text logging.
+    .OUTPUTS
+        PSCustomObject with ComputerName, Timestamp, Volume, Result, ExitCode, Duration, Message
+    #>
+    [CmdletBinding()]
+    param()
+
+    $xPath = "*[System[(EventID=1001) and Provider[@Name='Microsoft-Windows-Wininit']]]"
+
+    try {
+        $eventXml = & wevtutil.exe qe Application /q:$xPath /rd:true /c:1 /f:text 2>&1 | Out-String
+        if (-not $eventXml -or -not $eventXml.Trim()) {
+            return $null
+        }
+
+        # Parse the event text to extract key fields
+        $timestamp = $null
+        $volume = $null
+        $result = "Unknown"
+        $exitCode = $null
+        $duration = $null
+        $message = $eventXml.Trim()
+
+        # Extract timestamp
+        if ($eventXml -match 'Date:\s+(.+)') {
+            $timestamp = $matches[1].Trim()
+        }
+
+        # Extract volume from message - supports EN and PT-BR
+        # EN: "Checking file system on C:"
+        # PT-BR: "Verificando o sistema de arquivos em C:"
+        if ($eventXml -match '(?:Checking file system on|Verificando o sistema de arquivos em)\s+([A-Z]:)') {
+            $volume = $matches[1]
+        }
+
+        # Determine result based on message content - supports EN and PT-BR
+        if ($eventXml -match '(?:Windows has checked the file system and found no problems|Nao h[aá] problemas no sistema de arquivos|Não há problemas no sistema de arquivos|No problems were found)') {
+            $result = "Success - No errors"
+        }
+        elseif ($eventXml -match '(?:Windows has made corrections to the file system|Windows fez correções no sistema de arquivos|Windows fez correções ao sistema de arquivos)') {
+            $result = "Success - Errors corrected"
+        }
+        elseif ($eventXml -match '(?:Windows has found errors|Windows encontrou erros|CHKDSK discovered free space marked as allocated|CHKDSK descobriu espaço livre marcado como alocado)') {
+            $result = "Errors found - Not corrected"
+        }
+
+        # Extract duration if present - supports EN and PT-BR (handles different accent encodings)
+        # EN: "Duration: 00:00:15" or "Total duration: 6.29 minutes"
+        # PT-BR: "Duração total: 6.29 minutos (377840 ms)" or "Duração da fase (...): 7.50 segundos"
+        if ($eventXml -match '(?:Dura[cç][aã]o total|Total duration|Duration):\s*([0-9.]+(?:\s*(?:minutes?|minutos?|segundos?|seconds?|ms|:\d+:\d+)))') {
+            $duration = $matches[1].Trim()
+        }
+        elseif ($eventXml -match 'Dura[cç][aã]o da fase\s*\([^)]+\):\s*([0-9.]+\s*(?:segundos?|minutes?|milissegundos?))') {
+            $duration = $matches[1].Trim()
+        }
+
+        return [PSCustomObject]@{
+            ComputerName = $env:COMPUTERNAME
+            Timestamp    = $timestamp
+            Volume       = $volume
+            Result       = $result
+            ExitCode     = $exitCode
+            Duration     = $duration
+            Message      = $message
+        }
+    }
+    catch {
+        Write-Log "Get-ChkdskCompletionEvent error: $($_.Exception.Message)" -Level "WARN"
+        return $null
+    }
+}
+
+function Export-ChkdskResult {
+    <#
+    .SYNOPSIS
+        Exports CHKDSK result to both JSON and text formats in the dedicated CHKDSK log directory.
+    .DESCRIPTION
+        Creates C:\ITechBR\Logs\CHKDSK\ directory if needed, ensures SYSTEM write access,
+        and writes both structured JSON and human-readable text output.
+    #>
+    [CmdletBinding()]
+    param(
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$ChkdskResult,
+
+        [Parameter(Mandatory = $true)]
+        [string]$MainLogPath
+    )
+
+    $chkdskLogDir = "C:\ITechBR\Logs\CHKDSK"
+    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $jsonPath = Join-Path $chkdskLogDir "chkdsk-result-$timestamp.json"
+    $txtPath  = Join-Path $chkdskLogDir "chkdsk-result-$timestamp.txt"
+
+    try {
+        # Ensure directory exists with proper permissions for SYSTEM
+        if (-not (Test-Path $chkdskLogDir)) {
+            New-Item -Path $chkdskLogDir -ItemType Directory -Force | Out-Null
+            # Grant SYSTEM full control (icacls may not be available in all contexts)
+            try {
+                icacls.exe $chkdskLogDir /grant "SYSTEM:(OI)(CI)F" /T /C /Q 2>&1 | Out-Null
+            }
+            catch { }
+        }
+
+        # Export JSON
+        $ChkdskResult | ConvertTo-Json -Depth 5 | Out-File -FilePath $jsonPath -Encoding UTF8 -Force
+
+        # Export formatted text
+        $txtContent = @"
+CHKDSK Post-Reboot Result
+=========================
+Computer: $($ChkdskResult.ComputerName)
+Timestamp: $($ChkdskResult.Timestamp)
+Volume: $($ChkdskResult.Volume)
+Result: $($ChkdskResult.Result)
+Duration: $($ChkdskResult.Duration)
+ExitCode: $($ChkdskResult.ExitCode)
+
+Full Event Message:
+$($ChkdskResult.Message)
+"@
+        $txtContent | Out-File -FilePath $txtPath -Encoding ASCII -Force
+
+        # Also append summary to main log
+        $summary = "CHKDSK Result: $($ChkdskResult.Result) on $($ChkdskResult.Volume) at $($ChkdskResult.Timestamp)"
+        Write-Log $summary -Level "OK"
+        Add-Content -Path $MainLogPath -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [OK] $summary" -Encoding ASCII
+
+        return @{ JsonPath = $jsonPath; TxtPath = $txtPath }
+    }
+    catch {
+        Write-Log "Export-ChkdskResult error: $($_.Exception.Message)" -Level "ERROR"
+        return $null
+    }
+}
+
 function Register-ChkdskLogCollector {
     param(
         [Parameter(Mandatory = $true)]
@@ -258,8 +401,8 @@ function Add-Line {
     Write-Host $line
 }
 
+# Use the main script's Get-ChkdskCompletionEvent logic (replicated for standalone collector)
 # Normalize and filter wevtutil output for clean logging
-# Inline ASCII-safe converter for the collector script
 function Convert-ToAsciiSafe {
     param([string]$Text)
     if ([string]::IsNullOrEmpty($Text)) { return "" }
@@ -274,42 +417,135 @@ function Convert-ToAsciiSafe {
     return $sb.ToString()
 }
 
-function Get-ChkdskRelevantLines {
-    param([string]$Text)
-    $normalized = Convert-ToAsciiSafe -Text $Text
-    # Split by both \n and embedded \r\n (wevtutil outputs inline carriage returns)
-    $lines = $normalized -split "`r?`n" | Where-Object {
-        $line = $_.Trim()
-        # Filter out progress percentage lines - supports en, pt-br, es
-        $isProgress = $line -match "(Se completo|se completo).*[0-9]+\.?[0-9]*%|[0-9]+\.?[0-9]*%\s*(complet[ao]?[a-z]*|conclui[a-z]+|completed|done|comprobacion|comprobando)"
-        # Keep only essential CHKDSK lines - summary key metrics
-        $isChkDsk = $line -match "registros de archivos procesados|sectores defectuosos|espacio total|KB disponibles|entradas de Yndice procesadas|examin.*el sistema.*problemas|proteccion de recursos"
-        $isUseless = $line -match "Event\[|] Log Name:|Source:|Date:|Event ID:|Task:|Level:|Opcode:|Keyword:|User:|User Name:|Computer:|Description:|Sinal:|Resposta:|Falha no bucket|Nome do Evento:|Verificando novamente|Checking again|Status do Relat.*rio:|Bucket com hash:|Esses arquivos talvez|NULL|Duracion de la fase|Liberando"
-        return ($line -and -not $isProgress -and $isChkDsk -and -not $isUseless)
-    }
-    return ($lines | Where-Object { $_ -and $_.Trim() }) -join "`r`n"
-}
-        if ($isStageStart -and $groupedLines.Count -gt 0) {
-            $groupedLines += ""
+function Get-ChkdskCompletionEventCollector {
+    <#
+    .SYNOPSIS
+        Collector-internal version of Get-ChkdskCompletionEvent for post-reboot CHKDSK log harvesting.
+    .OUTPUTS
+        PSCustomObject with ComputerName, Timestamp, Volume, Result, ExitCode, Duration, Message
+    #>
+    $xPath = "*[System[(EventID=1001) and Provider[@Name='Microsoft-Windows-Wininit']]]"
+
+    try {
+        $eventXml = & wevtutil.exe qe Application /q:$xPath /rd:true /c:1 /f:text 2>&1 | Out-String
+        if (-not $eventXml -or -not $eventXml.Trim()) {
+            return $null
         }
-        $groupedLines += "  $line"
+
+        $timestamp = $null
+        $volume = $null
+        $result = "Unknown"
+        $exitCode = $null
+        $duration = $null
+        $message = $eventXml.Trim()
+
+        if ($eventXml -match 'Date:\s+(.+)') {
+            $timestamp = $matches[1].Trim()
+        }
+        # Extract volume from message - supports EN and PT-BR
+        # EN: "Checking file system on C:"
+        # PT-BR: "Verificando o sistema de arquivos em C:"
+        if ($eventXml -match '(?:Checking file system on|Verificando o sistema de arquivos em)\s+([A-Z]:)') {
+            $volume = $matches[1]
+        }
+        # Determine result based on message content - supports EN and PT-BR
+        if ($eventXml -match '(?:Windows has checked the file system and found no problems|Nao h[aá] problemas no sistema de arquivos|Não há problemas no sistema de arquivos|No problems were found)') {
+            $result = "Success - No errors"
+        }
+        elseif ($eventXml -match '(?:Windows has made corrections to the file system|Windows fez correções no sistema de arquivos|Windows fez correções ao sistema de arquivos)') {
+            $result = "Success - Errors corrected"
+        }
+        elseif ($eventXml -match '(?:Windows has found errors|Windows encontrou erros|CHKDSK discovered free space marked as allocated|CHKDSK descobriu espaço livre marcado como alocado)') {
+            $result = "Errors found - Not corrected"
+        }
+        # Extract duration if present - supports EN and PT-BR (handles different accent encodings)
+        # EN: "Duration: 00:00:15" or "Total duration: 6.29 minutes"
+        # PT-BR: "Duração total: 6.29 minutos (377840 ms)" or "Duração da fase (...): 7.50 segundos"
+        if ($eventXml -match '(?:Dura[cç][aã]o total|Total duration|Duration):\s*([0-9.]+(?:\s*(?:minutes?|minutos?|segundos?|seconds?|ms|:\d+:\d+)))') {
+            $duration = $matches[1].Trim()
+        }
+        elseif ($eventXml -match 'Dura[cç][aã]o da fase\s*\([^)]+\):\s*([0-9.]+\s*(?:segundos?|minutes?|milissegundos?))') {
+            $duration = $matches[1].Trim()
+        }
+
+        return [PSCustomObject]@{
+            ComputerName = $env:COMPUTERNAME
+            Timestamp    = $timestamp
+            Volume       = $volume
+            Result       = $result
+            ExitCode     = $exitCode
+            Duration     = $duration
+            Message      = $message
+        }
     }
-    return ($groupedLines -join "`r`n")
+    catch {
+        Add-Line "Get-ChkdskCompletionEventCollector error: $($_.Exception.Message)"
+        return $null
+    }
+}
+
+function Export-ChkdskResultCollector {
+    param(
+        [Parameter(Mandatory = $true)]
+        [PSCustomObject]$ChkdskResult,
+        [Parameter(Mandatory = $true)]
+        [string]$MainLogPath
+    )
+
+    $chkdskLogDir = "C:\ITechBR\Logs\CHKDSK"
+    $timestamp = Get-Date -Format "yyyyMMdd_HHmmss"
+    $jsonPath = Join-Path $chkdskLogDir "chkdsk-result-$timestamp.json"
+    $txtPath  = Join-Path $chkdskLogDir "chkdsk-result-$timestamp.txt"
+
+    try {
+        if (-not (Test-Path $chkdskLogDir)) {
+            New-Item -Path $chkdskLogDir -ItemType Directory -Force | Out-Null
+            try {
+                icacls.exe $chkdskLogDir /grant "SYSTEM:(OI)(CI)F" /T /C /Q 2>&1 | Out-Null
+            }
+            catch { }
+        }
+
+        $ChkdskResult | ConvertTo-Json -Depth 5 | Out-File -FilePath $jsonPath -Encoding UTF8 -Force
+
+        $txtContent = @"
+CHKDSK Post-Reboot Result
+=========================
+Computer: $($ChkdskResult.ComputerName)
+Timestamp: $($ChkdskResult.Timestamp)
+Volume: $($ChkdskResult.Volume)
+Result: $($ChkdskResult.Result)
+Duration: $($ChkdskResult.Duration)
+ExitCode: $($ChkdskResult.ExitCode)
+
+Full Event Message:
+$($ChkdskResult.Message)
+"@
+        $txtContent | Out-File -FilePath $txtPath -Encoding ASCII -Force
+
+        $summary = "CHKDSK Result: $($ChkdskResult.Result) on $($ChkdskResult.Volume) at $($ChkdskResult.Timestamp)"
+        Add-Line $summary
+        Add-Content -Path $MainLogPath -Value "$(Get-Date -Format 'yyyy-MM-dd HH:mm:ss') [OK] $summary" -Encoding ASCII
+
+        return @{ JsonPath = $jsonPath; TxtPath = $txtPath }
+    }
+    catch {
+        Add-Line "Export-ChkdskResultCollector error: $($_.Exception.Message)"
+        return $null
+    }
 }
 
 Start-Sleep -Seconds 90
 Add-Line "===== CHKDSK RESULT AFTER RESTART ====="
 
-# Use wevtutil instead of Get-WinEvent for non-admin compatibility
-$xPath = "*[System[(EventID=1001)]]"
+# Use wevtutil with Wininit provider filter for CHKDSK events
 for ($attempt = 1; $attempt -le 15; $attempt++) {
     try {
-        $eventXml = & wevtutil.exe qe Application /q:$xPath /rd:true /c:1 /f:text 2>&1 | Out-String
-        $filteredOutput = Get-ChkdskRelevantLines -Text $eventXml
-        if ($filteredOutput) {
-            Add-Line "CHKDSK event detected via wevtutil (system language)."
+        $chkdskEvent = Get-ChkdskCompletionEventCollector
+        if ($chkdskEvent) {
+            Add-Line "CHKDSK completion event detected (Provider: Microsoft-Windows-Wininit)."
             Add-Line "Results summary:"
-            Add-Line $filteredOutput
+            Export-ChkdskResultCollector -ChkdskResult $chkdskEvent -MainLogPath $LogPath
             break
         }
         Add-Line "CHKDSK event not found on attempt $($attempt). Waiting before retry."
@@ -328,13 +564,27 @@ try {
 }
 catch {}
 
-# Self-delete the collector script
+# Self-delete the collector script - use absolute path
 try {
+    $absolutePath = $null
     if ($ScriptPath -and (Test-Path -LiteralPath $ScriptPath)) {
-        Remove-Item -LiteralPath $ScriptPath -Force -ErrorAction SilentlyContinue
+        $absolutePath = Resolve-Path -LiteralPath $ScriptPath | Select-Object -ExpandProperty Path
+    }
+    elseif ($MyInvocation.MyCommand.Path -and (Test-Path -LiteralPath $MyInvocation.MyCommand.Path)) {
+        $absolutePath = Resolve-Path -LiteralPath $MyInvocation.MyCommand.Path | Select-Object -ExpandProperty Path
+    }
+
+    if ($absolutePath -and (Test-Path -LiteralPath $absolutePath)) {
+        Remove-Item -LiteralPath $absolutePath -Force -ErrorAction SilentlyContinue
+        Add-Line "Collector script self-deleted: $absolutePath"
+    }
+    else {
+        Add-Line "WARNING: Could not resolve collector script path for self-deletion"
     }
 }
-catch {}
+catch {
+    Add-Line "WARNING: Collector self-deletion failed: $($_.Exception.Message)"
+}
 '@
 
     try {

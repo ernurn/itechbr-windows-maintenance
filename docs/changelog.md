@@ -6,6 +6,22 @@ This project adheres to a standard semantic-inspired versioning model (`MAJOR.MI
 
 ---
 
+## [v2.0.1] - 2026-07-23
+
+### Fixed
+- Hardened CHKDSK post-reboot log collector.
+- Added Wininit provider filtering to avoid EventID 1001 false positives.
+- Added structured CHKDSK JSON/TXT reports.
+- Improved SYSTEM execution compatibility.
+- Improved collector self-deletion reliability.
+
+### Validation
+- Tested Scheduled Task execution as SYSTEM.
+- Verified CHKDSK EventID 1001 XPath filtering.
+- Verified PT-BR event parsing.
+
+---
+
 ## [v2.0.0] - 2026-07-03
 
 ### 🏗 Architecture
