@@ -1,13 +1,4 @@
 # ========================================
-# LEGACY ENTRY POINT
-#
-# Deprecated since v2.0.0
-#
-# Replaced by:
-# scripts/main.ps1
-#
-# Kept only for rollback purposes.
-# ========================================
 # ITechBR - Automated Windows Maintenance
 # Author: Ernesto Nurnberg / ITechBR
 # Purpose: Maintain, repair, and update Windows with minimal technician interaction
@@ -280,33 +271,7 @@ param(
 function Add-Line {
     param([string]$Text)
     $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $line = "$time [INFO] $Text"
-    try {
-        $line | Out-File -FilePath $LogPath -Append -Encoding ASCII -ErrorAction Stop
-    }
-    catch {
-        # Fallback 1: ensure log directory exists
-        $logDir = Split-Path -Parent $LogPath
-        if (-not (Test-Path $logDir)) {
-            New-Item -Path $logDir -ItemType Directory -Force | Out-Null
-        }
-        try {
-            $line | Out-File -FilePath $LogPath -Append -Encoding ASCII
-        }
-        catch {
-            # Fallback 2: write to alternative location if main log is inaccessible
-            $altLog = Join-Path $env:TEMP "ITech-ChkdskResults-$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-            try {
-                $line | Out-File -FilePath $altLog -Append -Encoding ASCII -ErrorAction Stop
-                Write-Host "Wrote to alternative log: $altLog" -ForegroundColor Yellow
-            }
-            catch {
-                Write-Host "FAILED to write to any log: $($_.Exception.Message)" -ForegroundColor Red
-            }
-        }
-    }
-    # Also write to console for visibility
-    Write-Host $line
+    "$time [INFO] $Text" | Out-File -FilePath $LogPath -Append -Encoding UTF8
 }
 
 Start-Sleep -Seconds 90
@@ -314,29 +279,14 @@ Add-Line "===== CHKDSK RESULT AFTER RESTART ====="
 
 for ($attempt = 1; $attempt -le 10; $attempt++) {
     try {
-        # Expand time window for later attempts
-        $minutesToSearch = if ($attempt -le 5) { 30 } else { 60 }
-        $events = Get-WinEvent -FilterHashtable @{ LogName = "Application"; Id = 1001; StartTime = (Get-Date).AddMinutes(-$minutesToSearch) } -MaxEvents 50 -ErrorAction Stop
+        $events = Get-WinEvent -FilterHashtable @{ LogName = "Application"; Id = 1001 } -MaxEvents 50 -ErrorAction Stop
         $event = $events | Where-Object {
             ($_.ProviderName -eq "Microsoft-Windows-Wininit" -or $_.ProviderName -eq "Wininit") -and
             ($_.Message -match "CHKDSK|NTFS|file system|sistema de arquivos|sistema de archivos")
         } | Select-Object -First 1
 
         if ($event) {
-            Add-Line "CHKDSK completed at: $($event.TimeCreated)"
-            Add-Line "Log: $($event.LogName), Event ID: $($event.Id), Provider: $($event.ProviderName)"
-
-            # Extract and format the CHKDSK output
-            $lines = $event.Message -split "`r?`n"
-            $outputLines = $lines | Where-Object {
-                $_ -match "\d+ bytes|cross|mapping|clusters|sectors|correction|repaired|fixed|Windows|NTFS" -or
-                $_ -match "verificado|agendado|repaired|fixed|concluído|concluido|concluído"
-            }
-            if ($outputLines) {
-                foreach ($line in $outputLines) { Add-Line $line }
-            } else {
-                Add-Line ($event.Message.Trim())
-            }
+            Add-Line ($event.Message.Trim())
             break
         }
 
@@ -351,16 +301,12 @@ for ($attempt = 1; $attempt -le 10; $attempt++) {
 
 try {
     Unregister-ScheduledTask -TaskName "ITechBR-ChkdskLogCollector" -Confirm:$false -ErrorAction SilentlyContinue
-    # Self-delete the collector script - use $MyInvocation.MyCommand.Path for correct path resolution
-    $scriptPath = $MyInvocation.MyCommand.Path
-    if ($scriptPath -and (Test-Path $scriptPath)) {
-        Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
-    }
+    Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
 }
 catch {}
 '@
 
-    Set-Content -LiteralPath $collectorPath -Value $collectorScript -Encoding ASCII -Force
+    Set-Content -LiteralPath $collectorPath -Value $collectorScript -Encoding UTF8 -Force
 
     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$collectorPath`" -LogPath `"$TargetLogPath`""
     $trigger = New-ScheduledTaskTrigger -AtStartup

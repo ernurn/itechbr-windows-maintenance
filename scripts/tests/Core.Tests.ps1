@@ -19,7 +19,8 @@ $CoreTests = @(
     'Logging.Tests.ps1',
     'Security.Tests.ps1',
     'Reporting.Tests.ps1',
-    'NativeCommand.Tests.ps1'
+    'NativeCommand.Tests.ps1',
+    'TextNormalization.Tests.ps1'
 )
 
 Write-Host "=============================================" -ForegroundColor Cyan

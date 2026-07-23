@@ -14,7 +14,7 @@ param(
 $script:TestRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 $AllTests = @(
-    'Core.Tests.ps1',      # Logging, Security, Reporting, NativeCommand
+    'Core.Tests.ps1',      # Logging, Security, Reporting, NativeCommand, TextNormalization
     'Diagnostics.Tests.ps1',
     'Inventory.Tests.ps1',
     'Cleanup.Tests.ps1'

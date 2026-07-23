@@ -55,10 +55,12 @@ $ModulesPath   = Join-Path $ScriptsFolder "modules"
 
 # Import Core modules BEFORE initialization (they provide the logging/reporting infrastructure)
 $CoreModules = @(
+    "TextNormalization.psm1",
     "Logging.psm1",
     "Reporting.psm1",
     "Security.psm1",
-    "NativeCommand.psm1"
+    "NativeCommand.psm1",
+    "PowerManagement.psm1"
 )
 
 foreach ($module in $CoreModules) {
@@ -117,90 +119,14 @@ catch {
 }
 
 # ========================================
-# POWER STATE CAPTURE (for later restoration)
+# POWER STATE CAPTURE (via module)
 # ========================================
 
-$script:InitialHibernationEnabled = $false
-$script:InitialFastStartupValue = 1
-
-try {
-    # Check if hiberfil.sys exists to determine initial hibernation state
-    $hiberFile = Get-Item -LiteralPath "$env:SystemDrive\hiberfil.sys" -Force -ErrorAction SilentlyContinue
-    $script:InitialHibernationEnabled = [bool]$hiberFile
-}
-catch {
-    Write-Log "Could not determine initial hibernation state: $($_.Exception.Message)" -Level "WARN"
-}
-
-try {
-    $powerKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power"
-    $hiberbootValue = (Get-ItemProperty -Path $powerKey -Name HiberbootEnabled -ErrorAction SilentlyContinue).HiberbootEnabled
-    if ($null -ne $hiberbootValue) {
-        $script:InitialFastStartupValue = $hiberbootValue
-    }
-}
-catch {
-    Write-Log "Could not capture initial Fast Startup value: $($_.Exception.Message)" -Level "WARN"
-}
+Initialize-PowerStateCapture
 
 $script:PowerConfigChanged = $false
 $script:RestartRequired = $false
 $script:ChkdskScheduled = $false
-
-# ========================================
-# POWER CONFIGURATION MANAGEMENT
-# ========================================
-
-function Disable-HibernationAndFastStartup {
-    Write-Log "Disabling hibernation and Fast Startup for maintenance..." -Level "INFO"
-
-    try {
-        Invoke-NativeCommand -FilePath "powercfg.exe" -Arguments @("/h", "off") | Out-Null
-        $script:PowerConfigChanged = $true
-        Write-Log "Hibernation disabled." -Level "OK"
-    }
-    catch {
-        Write-Log "Could not disable hibernation: $($_.Exception.Message)" -Level "WARN"
-    }
-
-    try {
-        $powerKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power"
-        Set-ItemProperty -Path $powerKey -Name HiberbootEnabled -Value 0 -Force -ErrorAction Stop
-        Write-Log "Fast Startup disabled." -Level "OK"
-    }
-    catch {
-        Write-Log "Could not disable Fast Startup: $($_.Exception.Message)" -Level "WARN"
-    }
-}
-
-function Restore-OriginalPowerSettings {
-    Write-Log "Restoring original power settings..." -Level "INFO"
-
-    try {
-        if ($script:InitialHibernationEnabled) {
-            Invoke-NativeCommand -FilePath "powercfg.exe" -Arguments @("/h", "on") | Out-Null
-        }
-        else {
-            Invoke-NativeCommand -FilePath "powercfg.exe" -Arguments @("/h", "off") | Out-Null
-        }
-        Write-Log "Hibernation restored to initial state." -Level "OK"
-    }
-    catch {
-        Write-Log "Could not restore hibernation settings: $($_.Exception.Message)" -Level "WARN"
-    }
-
-    try {
-        $powerKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power"
-        Set-ItemProperty -Path $powerKey -Name HiberbootEnabled -Value $script:InitialFastStartupValue -Force -ErrorAction Stop
-        Write-Log "Fast Startup restored to initial value ($($script:InitialFastStartupValue))." -Level "OK"
-    }
-    catch {
-        Write-Log "Could not restore Fast Startup: $($_.Exception.Message)" -Level "WARN"
-    }
-
-    $script:PowerConfigChanged = $false
-    $script:PowerRestored = $true
-}
 
 # ========================================
 # CHECKDISK LOG COLLECTOR REGISTRATION

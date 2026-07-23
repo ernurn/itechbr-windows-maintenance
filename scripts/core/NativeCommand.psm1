@@ -13,6 +13,8 @@
 
 Set-StrictMode -Version Latest
 
+Import-Module (Join-Path $PSScriptRoot "TextNormalization.psm1") -Force
+
 # ========================================
 # LOGGING / REPORTING GUARDS
 # ========================================
@@ -44,8 +46,115 @@ function script:Write-NativeResult {
 }
 
 # ========================================
-# PUBLIC FUNCTION
+# PUBLIC FUNCTIONS
 # ========================================
+
+function Read-CommandOutputFile {
+    <#
+    .SYNOPSIS
+        Reads a command output file with automatic encoding detection.
+    .DESCRIPTION
+        Handles UTF-8 (with/without BOM), UTF-16 LE/BE BOM, UTF-16 LE without BOM (via sampling),
+        and falls back to the system's OEM code page for legacy console output.
+    .PARAMETER Path
+        Full path to the file to read.
+    .OUTPUTS
+        [string] File contents decoded as text, or empty string if file missing/empty.
+    #>
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return ""
+    }
+
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    if ($null -eq $bytes -or $bytes.Count -eq 0) {
+        return ""
+    }
+
+    # Check for UTF-16 LE BOM (0xFF, 0xFE)
+    if ($bytes.Count -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+        return [System.Text.Encoding]::Unicode.GetString($bytes)
+    }
+
+    # Check for UTF-16 BE BOM (0xFE, 0xFF)
+    if ($bytes.Count -ge 2 -and $bytes[0] -eq 0xFE -and $bytes[1] -eq 0xFF) {
+        return [System.Text.Encoding]::BigEndianUnicode.GetString($bytes)
+    }
+
+    # Check for UTF-8 BOM (0xEF, 0xBB, 0xBF)
+    if ($bytes.Count -ge 3 -and $bytes[0] -eq 0xEF -and $bytes[1] -eq 0xBB -and $bytes[2] -eq 0xBF) {
+        return [System.Text.Encoding]::UTF8.GetString($bytes)
+    }
+
+    # Detect UTF-8 without BOM: valid UTF-8 byte sequences
+    if (Test-ValidUtf8 -Bytes $bytes) {
+        return [System.Text.Encoding]::UTF8.GetString($bytes)
+    }
+
+    # Detect UTF-16 LE by looking for null bytes in odd positions (sampling first 200 bytes)
+    $sampleLength = [Math]::Min($bytes.Count, 200)
+    $nullOddBytes = 0
+    for ($i = 1; $i -lt $sampleLength; $i += 2) {
+        if ($bytes[$i] -eq 0) { $nullOddBytes++ }
+    }
+    if ($sampleLength -gt 20 -and $nullOddBytes -gt ($sampleLength / 4)) {
+        return [System.Text.Encoding]::Unicode.GetString($bytes)
+    }
+
+    # Default to OEM encoding for console output
+    $oemEncoding = [System.Text.Encoding]::GetEncoding([System.Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
+    return $oemEncoding.GetString($bytes)
+}
+
+function script:Test-ValidUtf8 {
+    param(
+        [Parameter(Mandatory = $true)]
+        [byte[]]$Bytes
+    )
+
+    $i = 0
+    while ($i -lt $Bytes.Count) {
+        $b = $Bytes[$i]
+        if ($b -lt 0x80) {
+            # ASCII (1 byte)
+            $i++
+        }
+        elseif ($b -ge 0xC2 -and $b -le 0xDF) {
+            # 2-byte sequence: 110xxxxx 10xxxxxx
+            if ($i + 1 -ge $Bytes.Count) { return $false }
+            if ($Bytes[$i + 1] -lt 0x80 -or $Bytes[$i + 1] -gt 0xBF) { return $false }
+            $i += 2
+        }
+        elseif ($b -ge 0xE0 -and $b -le 0xEF) {
+            # 3-byte sequence: 1110xxxx 10xxxxxx 10xxxxxx
+            if ($i + 2 -ge $Bytes.Count) { return $false }
+            if ($b -eq 0xE0 -and $Bytes[$i + 1] -lt 0xA0) { return $false }  # overlong
+            if ($b -eq 0xED -and $Bytes[$i + 1] -ge 0xA0) { return $false }  # surrogate
+            if ($Bytes[$i + 1] -lt 0x80 -or $Bytes[$i + 1] -gt 0xBF) { return $false }
+            if ($Bytes[$i + 2] -lt 0x80 -or $Bytes[$i + 2] -gt 0xBF) { return $false }
+            $i += 3
+        }
+        elseif ($b -ge 0xF0 -and $b -le 0xF4) {
+            # 4-byte sequence: 11110xxx 10xxxxxx 10xxxxxx 10xxxxxx
+            if ($i + 3 -ge $Bytes.Count) { return $false }
+            if ($b -eq 0xF0 -and $Bytes[$i + 1] -lt 0x90) { return $false }  # overlong
+            if ($b -eq 0xF4 -and $Bytes[$i + 1] -gt 0x8F) { return $false }  # > U+10FFFF
+            if ($Bytes[$i + 1] -lt 0x80 -or $Bytes[$i + 1] -gt 0xBF) { return $false }
+            if ($Bytes[$i + 2] -lt 0x80 -or $Bytes[$i + 2] -gt 0xBF) { return $false }
+            if ($Bytes[$i + 3] -lt 0x80 -or $Bytes[$i + 3] -gt 0xBF) { return $false }
+            $i += 4
+        }
+        else {
+            # Invalid leading byte
+            return $false
+        }
+    }
+    return $true
+}
 
 function Invoke-NativeCommand {
     <#
@@ -90,33 +199,6 @@ function Invoke-NativeCommand {
         }) -join ' '
     }
 
-    # Helper: Read output file (inline to avoid script: scope issues)
-    $ReadOutput = {
-        param([string]$OutPath)
-        if (-not (Test-Path -LiteralPath $OutPath)) { return "" }
-        $bytes = [System.IO.File]::ReadAllBytes($OutPath)
-        if ($null -eq $bytes -or $bytes.Count -eq 0) { return "" }
-
-        # Check for UTF-16 LE BOM (0xFF, 0xFE)
-        if ($bytes.Count -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
-            return [System.Text.Encoding]::Unicode.GetString($bytes)
-        }
-
-        # Detect UTF-16 LE by looking for null bytes in odd positions
-        $sampleLength = [Math]::Min($bytes.Count, 200)
-        $nullOddBytes = 0
-        for ($i = 1; $i -lt $sampleLength; $i += 2) {
-            if ($bytes[$i] -eq 0) { $nullOddBytes++ }
-        }
-        if ($sampleLength -gt 20 -and $nullOddBytes -gt ($sampleLength / 4)) {
-            return [System.Text.Encoding]::Unicode.GetString($bytes)
-        }
-
-        # Default to OEM encoding for console output
-        $oemEncoding = [System.Text.Encoding]::GetEncoding([System.Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
-        return $oemEncoding.GetString($bytes)
-    }
-
     # Build command line safely
     $argumentString = & $JoinArguments $Arguments
     $commandId = [guid]::NewGuid().ToString("N")
@@ -157,8 +239,8 @@ function Invoke-NativeCommand {
     # Small delay to ensure file handles are released before reading
     Start-Sleep -Milliseconds 100
 
-    $stdout = & $ReadOutput $stdoutPath
-    $stderr = & $ReadOutput $stderrPath
+    $stdout = Read-CommandOutputFile -OutPath $stdoutPath
+    $stderr = Read-CommandOutputFile -OutPath $stderrPath
 
     # Normalize and filter output for ASCII-safe logging (removes diacritics, suppresses progress bars)
     $safeStdout = if ($stdout -and $stdout.Trim()) { Convert-TextToAsciiSafe -Text $stdout }
@@ -201,4 +283,4 @@ function Invoke-NativeCommand {
     }
 }
 
-Export-ModuleMember -Function Invoke-NativeCommand
+Export-ModuleMember -Function Invoke-NativeCommand, Read-CommandOutputFile
