@@ -1,13 +1,4 @@
 # ========================================
-# LEGACY ENTRY POINT
-#
-# Deprecated since v2.0.0
-#
-# Replaced by:
-# scripts/main.ps1
-#
-# Kept only for rollback purposes.
-# ========================================
 # ITechBR - Automated Windows Maintenance
 # Author: Ernesto Nurnberg / ITechBR
 # Purpose: Maintain, repair, and update Windows with minimal technician interaction
@@ -23,13 +14,6 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-
-# Import TextNormalization module for shared text utilities
-$ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
-$CorePath = Join-Path $ScriptRoot "core"
-Import-Module (Join-Path $CorePath "TextNormalization.psm1") -Force
-Import-Module (Join-Path $CorePath "NativeCommand.psm1") -Force
-Import-Module (Join-Path $CorePath "PowerManagement.psm1") -Force
 
 $LogDir = "C:\Logs"
 if (-not (Test-Path -LiteralPath $LogDir)) {
@@ -96,6 +80,61 @@ function Join-CommandArguments {
     }
 
     return ($escaped -join " ")
+}
+
+function Read-CommandOutputFile {
+    param(
+        [Parameter(Mandatory = $true)]
+        [string]$Path
+    )
+
+    if (-not (Test-Path -LiteralPath $Path)) {
+        return ""
+    }
+
+    $bytes = [System.IO.File]::ReadAllBytes($Path)
+    if ($bytes.Count -eq 0) {
+        return ""
+    }
+
+    if ($bytes.Count -ge 2 -and $bytes[0] -eq 0xFF -and $bytes[1] -eq 0xFE) {
+        return [System.Text.Encoding]::Unicode.GetString($bytes)
+    }
+
+    $sampleLength = [Math]::Min($bytes.Count, 200)
+    $nullOddBytes = 0
+    for ($i = 1; $i -lt $sampleLength; $i += 2) {
+        if ($bytes[$i] -eq 0) {
+            $nullOddBytes++
+        }
+    }
+
+    if ($sampleLength -gt 20 -and $nullOddBytes -gt ($sampleLength / 4)) {
+        return [System.Text.Encoding]::Unicode.GetString($bytes)
+    }
+
+    $oemEncoding = [System.Text.Encoding]::GetEncoding([System.Globalization.CultureInfo]::CurrentCulture.TextInfo.OEMCodePage)
+    return $oemEncoding.GetString($bytes)
+}
+
+function Convert-TextForMatch {
+    param([string]$Text)
+
+    if ($null -eq $Text) {
+        return ""
+    }
+
+    $normalized = $Text.Normalize([System.Text.NormalizationForm]::FormD)
+    $builder = New-Object System.Text.StringBuilder
+
+    foreach ($char in $normalized.ToCharArray()) {
+        $category = [System.Globalization.CharUnicodeInfo]::GetUnicodeCategory($char)
+        if ($category -ne [System.Globalization.UnicodeCategory]::NonSpacingMark) {
+            [void]$builder.Append($char)
+        }
+    }
+
+    return $builder.ToString().ToLowerInvariant()
 }
 
 function Invoke-NativeCommand {
@@ -232,33 +271,7 @@ param(
 function Add-Line {
     param([string]$Text)
     $time = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
-    $line = "$time [INFO] $Text"
-    try {
-        $line | Out-File -FilePath $LogPath -Append -Encoding ASCII -ErrorAction Stop
-    }
-    catch {
-        # Fallback 1: ensure log directory exists
-        $logDir = Split-Path -Parent $LogPath
-        if (-not (Test-Path $logDir)) {
-            New-Item -Path $logDir -ItemType Directory -Force | Out-Null
-        }
-        try {
-            $line | Out-File -FilePath $LogPath -Append -Encoding ASCII
-        }
-        catch {
-            # Fallback 2: write to alternative location if main log is inaccessible
-            $altLog = Join-Path $env:TEMP "ITech-ChkdskResults-$(Get-Date -Format 'yyyyMMdd_HHmmss').log"
-            try {
-                $line | Out-File -FilePath $altLog -Append -Encoding ASCII -ErrorAction Stop
-                Write-Host "Wrote to alternative log: $altLog" -ForegroundColor Yellow
-            }
-            catch {
-                Write-Host "FAILED to write to any log: $($_.Exception.Message)" -ForegroundColor Red
-            }
-        }
-    }
-    # Also write to console for visibility
-    Write-Host $line
+    "$time [INFO] $Text" | Out-File -FilePath $LogPath -Append -Encoding UTF8
 }
 
 Start-Sleep -Seconds 90
@@ -266,29 +279,14 @@ Add-Line "===== CHKDSK RESULT AFTER RESTART ====="
 
 for ($attempt = 1; $attempt -le 10; $attempt++) {
     try {
-        # Expand time window for later attempts
-        $minutesToSearch = if ($attempt -le 5) { 30 } else { 60 }
-        $events = Get-WinEvent -FilterHashtable @{ LogName = "Application"; Id = 1001; StartTime = (Get-Date).AddMinutes(-$minutesToSearch) } -MaxEvents 50 -ErrorAction Stop
+        $events = Get-WinEvent -FilterHashtable @{ LogName = "Application"; Id = 1001 } -MaxEvents 50 -ErrorAction Stop
         $event = $events | Where-Object {
             ($_.ProviderName -eq "Microsoft-Windows-Wininit" -or $_.ProviderName -eq "Wininit") -and
             ($_.Message -match "CHKDSK|NTFS|file system|sistema de arquivos|sistema de archivos")
         } | Select-Object -First 1
 
         if ($event) {
-            Add-Line "CHKDSK completed at: $($event.TimeCreated)"
-            Add-Line "Log: $($event.LogName), Event ID: $($event.Id), Provider: $($event.ProviderName)"
-
-            # Extract and format the CHKDSK output
-            $lines = $event.Message -split "`r?`n"
-            $outputLines = $lines | Where-Object {
-                $_ -match "\d+ bytes|cross|mapping|clusters|sectors|correction|repaired|fixed|Windows|NTFS" -or
-                $_ -match "verificado|agendado|repaired|fixed|concluído|concluido|concluído"
-            }
-            if ($outputLines) {
-                foreach ($line in $outputLines) { Add-Line $line }
-            } else {
-                Add-Line ($event.Message.Trim())
-            }
+            Add-Line ($event.Message.Trim())
             break
         }
 
@@ -303,16 +301,12 @@ for ($attempt = 1; $attempt -le 10; $attempt++) {
 
 try {
     Unregister-ScheduledTask -TaskName "ITechBR-ChkdskLogCollector" -Confirm:$false -ErrorAction SilentlyContinue
-    # Self-delete the collector script - use $MyInvocation.MyCommand.Path for correct path resolution
-    $scriptPath = $MyInvocation.MyCommand.Path
-    if ($scriptPath -and (Test-Path $scriptPath)) {
-        Remove-Item -LiteralPath $scriptPath -Force -ErrorAction SilentlyContinue
-    }
+    Remove-Item -LiteralPath $PSCommandPath -Force -ErrorAction SilentlyContinue
 }
 catch {}
 '@
 
-    Set-Content -LiteralPath $collectorPath -Value $collectorScript -Encoding ASCII -Force
+    Set-Content -LiteralPath $collectorPath -Value $collectorScript -Encoding UTF8 -Force
 
     $action = New-ScheduledTaskAction -Execute "powershell.exe" -Argument "-NoProfile -ExecutionPolicy Bypass -File `"$collectorPath`" -LogPath `"$TargetLogPath`""
     $trigger = New-ScheduledTaskTrigger -AtStartup
@@ -320,6 +314,41 @@ catch {}
     $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew -ExecutionTimeLimit (New-TimeSpan -Minutes 15)
 
     Register-ScheduledTask -TaskName "ITechBR-ChkdskLogCollector" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
+}
+
+function Get-HibernationState {
+    $hiberFile = Get-Item -LiteralPath "$env:SystemDrive\hiberfil.sys" -Force -ErrorAction SilentlyContinue
+    return [bool]$hiberFile
+}
+
+function Set-FastStartup {
+    param(
+        [Parameter(Mandatory = $true)]
+        [bool]$Enabled
+    )
+
+    $powerKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power"
+    $value = if ($Enabled) { 1 } else { 0 }
+    Set-ItemProperty -Path $powerKey -Name HiberbootEnabled -Value $value -Force
+}
+
+function Restore-OriginalPowerSettings {
+    param(
+        [Parameter(Mandatory = $true)]
+        [bool]$InitialHibernationEnabled,
+
+        [Parameter(Mandatory = $true)]
+        [int]$InitialFastStartupValue = 1
+    )
+
+    if ($InitialHibernationEnabled) {
+        Invoke-NativeCommand -FilePath "powercfg.exe" -Arguments @("/h", "on") | Out-Null
+    }
+    else {
+        Invoke-NativeCommand -FilePath "powercfg.exe" -Arguments @("/h", "off") | Out-Null
+    }
+
+    Set-FastStartup -Enabled ([bool]$InitialFastStartupValue)
 }
 
 function Install-WindowsUpdates {
@@ -391,7 +420,7 @@ trap {
 
         if ($script:PowerConfigChanged) {
             Write-Log "Attempting to restore hibernation and Fast Startup after fatal error" "WARN"
-            Restore-OriginalPowerSettings
+            Restore-OriginalPowerSettings -InitialHibernationEnabled $InitialHibernationEnabled -InitialFastStartupValue $InitialFastStartupValue
             $script:PowerConfigChanged = $false
             Write-Log "Power configuration restored after fatal error" "OK"
         }
@@ -466,10 +495,17 @@ Write-Log "User: $env:USERNAME"
 Write-Log "Operating system: $((Get-CimInstance Win32_OperatingSystem).Caption) $((Get-CimInstance Win32_OperatingSystem).Version)"
 Write-Log "Log: $LogPath"
 
-Initialize-PowerStateCapture
+$InitialHibernationEnabled = Get-HibernationState
+$InitialFastStartupValue = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Name HiberbootEnabled -ErrorAction SilentlyContinue).HiberbootEnabled
+
+if ($null -eq $InitialFastStartupValue) {
+    $InitialFastStartupValue = 1
+}
+Write-Log "Initial power state: Hibernation=$InitialHibernationEnabled, FastStartup=$InitialFastStartupValue"
 
 Invoke-Step "Temporarily disable power settings for maintenance" {
-    Disable-HibernationAndFastStartup
+    Invoke-NativeCommand -FilePath "powercfg.exe" -Arguments @("/h", "off") | Out-Null
+    Set-FastStartup -Enabled $false
     $script:PowerConfigChanged = $true
     "Hibernation and Fast Startup temporarily disabled"
 } -ContinueOnError
@@ -593,7 +629,7 @@ else {
 
 
 Invoke-Step "Restore original power settings" {
-    Restore-OriginalPowerSettings
+    Restore-OriginalPowerSettings -InitialHibernationEnabled $InitialHibernationEnabled -InitialFastStartupValue $InitialFastStartupValue
     $script:PowerConfigChanged = $false
     $script:PowerRestored = $true
     "Original power configuration restored"
