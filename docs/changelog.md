@@ -6,6 +6,27 @@ This project adheres to a standard semantic-inspired versioning model (`MAJOR.MI
 
 ---
 
+## [v2.2.0] - 2026-07-23
+
+### 🏗 Refactor
+- **Extracted power management to dedicated core module** - Created `scripts/core/PowerManagement.psm1` consolidating all power configuration logic
+- **Removed duplicate implementations** - Eliminated `Get-HibernationState`, `Set-FastStartup`, `Disable-HibernationAndFastStartup`, `Restore-OriginalPowerSettings` from `main.ps1` and `ITech-Maintenance.ps1`
+- **Centralized state capture and restoration** - Single source of truth for hibernation/FastStartup state via `Initialize-PowerStateCapture` and `Restore-OriginalPowerSettings`
+
+### 🛡 Safety Improvements
+- **Added restoration validation** - `Restore-OriginalPowerSettings` now verifies hibernation and Fast Startup values match expected state after restoration
+- **Warning on mismatch** - Logs WARN if actual state differs from expected after restoration, without aborting maintenance
+
+### 🔧 Internal
+- **New helper functions** - `Get-HibernationState`, `Get-FastStartupState`, `Set-FastStartup`, `Initialize-PowerStateCapture` exported for reusability
+- **Module scope isolation** - PowerManagement guards `Write-Log`/`Invoke-NativeCommand` calls with `Get-Command` checks for standalone loading support
+
+### ✅ Tests
+- All core and module test suites pass (except pre-existing TextNormalization failures)
+- Self-test mode functional for both `main.ps1` and `ITech-Maintenance.ps1`
+
+---
+
 ## [v2.1.0] - 2026-07-23
 
 ### 🏗 Refactor

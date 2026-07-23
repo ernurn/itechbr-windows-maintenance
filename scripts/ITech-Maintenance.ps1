@@ -29,6 +29,7 @@ $ScriptRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $CorePath = Join-Path $ScriptRoot "core"
 Import-Module (Join-Path $CorePath "TextNormalization.psm1") -Force
 Import-Module (Join-Path $CorePath "NativeCommand.psm1") -Force
+Import-Module (Join-Path $CorePath "PowerManagement.psm1") -Force
 
 $LogDir = "C:\Logs"
 if (-not (Test-Path -LiteralPath $LogDir)) {
@@ -321,41 +322,6 @@ catch {}
     Register-ScheduledTask -TaskName "ITechBR-ChkdskLogCollector" -Action $action -Trigger $trigger -Principal $principal -Settings $settings -Force | Out-Null
 }
 
-function Get-HibernationState {
-    $hiberFile = Get-Item -LiteralPath "$env:SystemDrive\hiberfil.sys" -Force -ErrorAction SilentlyContinue
-    return [bool]$hiberFile
-}
-
-function Set-FastStartup {
-    param(
-        [Parameter(Mandatory = $true)]
-        [bool]$Enabled
-    )
-
-    $powerKey = "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power"
-    $value = if ($Enabled) { 1 } else { 0 }
-    Set-ItemProperty -Path $powerKey -Name HiberbootEnabled -Value $value -Force
-}
-
-function Restore-OriginalPowerSettings {
-    param(
-        [Parameter(Mandatory = $true)]
-        [bool]$InitialHibernationEnabled,
-
-        [Parameter(Mandatory = $true)]
-        [int]$InitialFastStartupValue = 1
-    )
-
-    if ($InitialHibernationEnabled) {
-        Invoke-NativeCommand -FilePath "powercfg.exe" -Arguments @("/h", "on") | Out-Null
-    }
-    else {
-        Invoke-NativeCommand -FilePath "powercfg.exe" -Arguments @("/h", "off") | Out-Null
-    }
-
-    Set-FastStartup -Enabled ([bool]$InitialFastStartupValue)
-}
-
 function Install-WindowsUpdates {
     $session = New-Object -ComObject Microsoft.Update.Session
     $searcher = $session.CreateUpdateSearcher()
@@ -425,7 +391,7 @@ trap {
 
         if ($script:PowerConfigChanged) {
             Write-Log "Attempting to restore hibernation and Fast Startup after fatal error" "WARN"
-            Restore-OriginalPowerSettings -InitialHibernationEnabled $InitialHibernationEnabled -InitialFastStartupValue $InitialFastStartupValue
+            Restore-OriginalPowerSettings
             $script:PowerConfigChanged = $false
             Write-Log "Power configuration restored after fatal error" "OK"
         }
@@ -500,17 +466,10 @@ Write-Log "User: $env:USERNAME"
 Write-Log "Operating system: $((Get-CimInstance Win32_OperatingSystem).Caption) $((Get-CimInstance Win32_OperatingSystem).Version)"
 Write-Log "Log: $LogPath"
 
-$InitialHibernationEnabled = Get-HibernationState
-$InitialFastStartupValue = (Get-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Session Manager\Power" -Name HiberbootEnabled -ErrorAction SilentlyContinue).HiberbootEnabled
-
-if ($null -eq $InitialFastStartupValue) {
-    $InitialFastStartupValue = 1
-}
-Write-Log "Initial power state: Hibernation=$InitialHibernationEnabled, FastStartup=$InitialFastStartupValue"
+Initialize-PowerStateCapture
 
 Invoke-Step "Temporarily disable power settings for maintenance" {
-    Invoke-NativeCommand -FilePath "powercfg.exe" -Arguments @("/h", "off") | Out-Null
-    Set-FastStartup -Enabled $false
+    Disable-HibernationAndFastStartup
     $script:PowerConfigChanged = $true
     "Hibernation and Fast Startup temporarily disabled"
 } -ContinueOnError
@@ -634,7 +593,7 @@ else {
 
 
 Invoke-Step "Restore original power settings" {
-    Restore-OriginalPowerSettings -InitialHibernationEnabled $InitialHibernationEnabled -InitialFastStartupValue $InitialFastStartupValue
+    Restore-OriginalPowerSettings
     $script:PowerConfigChanged = $false
     $script:PowerRestored = $true
     "Original power configuration restored"
